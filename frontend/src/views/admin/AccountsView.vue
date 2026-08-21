@@ -2,6 +2,24 @@
   <AppLayout>
     <TablePageLayout>
       <template #filters>
+        <div class="mb-4 flex flex-col gap-4 rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 sm:flex-row sm:items-center sm:justify-between">
+          <div class="flex min-w-0 items-center gap-3">
+            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-50 text-primary-600 dark:bg-primary-500/10 dark:text-primary-400">
+              <PlatformIcon platform="grok" size="sm" />
+            </div>
+            <div class="min-w-0">
+              <div class="flex flex-wrap items-center gap-2">
+                <h2 class="text-sm font-semibold tracking-tight text-zinc-950 dark:text-white">Grok Reg bridge</h2>
+                <span class="rounded-full border border-primary-200 bg-primary-50 px-2 py-0.5 text-[11px] font-medium text-primary-700 dark:border-primary-500/20 dark:bg-primary-500/10 dark:text-primary-300">Native SSO delivery</span>
+              </div>
+              <p class="mt-1 truncate font-mono text-xs text-zinc-500 dark:text-zinc-400">POST /api/v1/admin/grok/sso-to-oauth · groups and account names preserved</p>
+            </div>
+          </div>
+          <button type="button" class="btn btn-secondary shrink-0" @click="showCreate = true">
+            <Icon name="plus" size="sm" />
+            Import Grok account
+          </button>
+        </div>
         <div class="flex flex-wrap-reverse items-start justify-between gap-3">
           <AccountTableFilters
             v-model:searchQuery="params.search"
@@ -522,6 +540,7 @@ import AccountCapacityCell from '@/components/account/AccountCapacityCell.vue'
 import UpstreamBillingRateCell from '@/components/account/UpstreamBillingRateCell.vue'
 import PlatformTypeBadge from '@/components/common/PlatformTypeBadge.vue'
 import Icon from '@/components/icons/Icon.vue'
+import PlatformIcon from '@/components/common/PlatformIcon.vue'
 import ErrorPassthroughRulesModal from '@/components/admin/ErrorPassthroughRulesModal.vue'
 import TLSFingerprintProfilesModal from '@/components/admin/TLSFingerprintProfilesModal.vue'
 import { fetchAllAccountIds } from '@/utils/accountSelection'
