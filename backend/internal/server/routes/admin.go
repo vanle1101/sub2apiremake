@@ -175,6 +175,8 @@ func registerContentModerationRoutes(admin *gin.RouterGroup, h *handler.Handlers
 func registerAdminAPIKeyRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	apiKeys := admin.Group("/api-keys")
 	{
+		apiKeys.POST("/sales/fulfill", h.Admin.APIKey.FulfillSale)
+		apiKeys.POST("/sales/lookup", h.Admin.APIKey.LookupSale)
 		apiKeys.PUT("/:id", h.Admin.APIKey.UpdateGroup)
 	}
 }

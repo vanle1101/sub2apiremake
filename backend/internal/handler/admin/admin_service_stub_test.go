@@ -756,6 +756,15 @@ func (s *stubAdminService) AdminResetAPIKeyRateLimitUsage(ctx context.Context, k
 	return nil, service.ErrAPIKeyNotFound
 }
 
+func (s *stubAdminService) AdminFulfillAPIKeySale(_ context.Context, input service.APIKeySaleFulfillmentInput) (*service.APIKeySaleFulfillmentResult, error) {
+	key := &service.APIKey{ID: 91, UserID: input.UserID, Key: "sk-test-sales-key-1234567890", Name: input.Name, Status: service.StatusActive, Quota: input.QuotaDelta}
+	return &service.APIKeySaleFulfillmentResult{APIKey: key, Operation: input.Operation}, nil
+}
+
+func (s *stubAdminService) AdminLookupAPIKeySale(_ context.Context, targetKey string) (*service.APIKey, error) {
+	return &service.APIKey{ID: 91, Key: targetKey, Status: service.StatusActive, Quota: 20, QuotaUsed: 3}, nil
+}
+
 func (s *stubAdminService) ResetAccountQuota(ctx context.Context, id int64) error {
 	return nil
 }

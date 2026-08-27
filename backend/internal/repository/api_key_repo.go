@@ -27,10 +27,13 @@ import (
 type apiKeyRepository struct {
 	client *dbent.Client
 	sql    sqlExecutor
+	db     *sql.DB
 }
 
 func NewAPIKeyRepository(client *dbent.Client, sqlDB *sql.DB) service.APIKeyRepository {
-	return newAPIKeyRepositoryWithSQL(client, sqlDB)
+	repo := newAPIKeyRepositoryWithSQL(client, sqlDB)
+	repo.db = sqlDB
+	return repo
 }
 
 func newAPIKeyRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor) *apiKeyRepository {
