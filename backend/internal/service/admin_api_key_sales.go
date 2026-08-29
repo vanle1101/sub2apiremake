@@ -144,6 +144,10 @@ func grokSaleCapacityConfig() (int64, int64, error) {
 }
 
 func newAPIKeySaleCapacityError(available, minimum int64) error {
+	return NewAPIKeySaleCapacityError(available, minimum)
+}
+
+func NewAPIKeySaleCapacityError(available, minimum int64) error {
 	if available < 0 {
 		available = 0
 	}
