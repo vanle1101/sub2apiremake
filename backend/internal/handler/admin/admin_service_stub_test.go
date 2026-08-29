@@ -761,6 +761,30 @@ func (s *stubAdminService) AdminFulfillAPIKeySale(_ context.Context, input servi
 	return &service.APIKeySaleFulfillmentResult{APIKey: key, Operation: input.Operation}, nil
 }
 
+func (s *stubAdminService) AdminFulfillAPIKeySaleBatch(_ context.Context, input service.APIKeySaleBatchFulfillmentInput) (*service.APIKeySaleBatchFulfillmentResult, error) {
+	keys := make([]*service.APIKey, len(input.Items))
+	for i, item := range input.Items {
+		groupID := input.GroupID
+		keys[i] = &service.APIKey{ID: int64(100 + i), UserID: item.UserID, Key: "sk-test-batch-key-1234567890", Name: item.Name, GroupID: &groupID, Status: service.StatusActive, Quota: item.QuotaDelta}
+	}
+	return &service.APIKeySaleBatchFulfillmentResult{APIKeys: keys}, nil
+}
+
+func (s *stubAdminService) AdminGetAPIKeySaleAvailability(_ context.Context, groupID int64) (*service.APIKeySaleAvailability, error) {
+	return &service.APIKeySaleAvailability{GroupID: groupID, AvailableTokens: 6_588_203, SuggestedTokens: 6_588_000, MinimumTokens: 1_000}, nil
+}
+
+func (s *stubAdminService) AdminReserveAPIKeySale(_ context.Context, input service.APIKeySaleReserveInput) (*service.APIKeySaleReservation, error) {
+	if input.RequestedTokens > 6_588_203 {
+		return nil, service.NewAPIKeySaleCapacityError(6_588_203, 1_000)
+	}
+	return &service.APIKeySaleReservation{ID: 81, ExternalReference: input.ExternalReference, State: service.APIKeySaleReservationHeld}, nil
+}
+
+func (s *stubAdminService) AdminReleaseAPIKeySale(_ context.Context, reservationID int64) (*service.APIKeySaleReservation, error) {
+	return &service.APIKeySaleReservation{ID: reservationID, State: service.APIKeySaleReservationReleased}, nil
+}
+
 func (s *stubAdminService) AdminLookupAPIKeySale(_ context.Context, targetKey string) (*service.APIKey, error) {
 	return &service.APIKey{ID: 91, Key: targetKey, Status: service.StatusActive, Quota: 20, QuotaUsed: 3}, nil
 }

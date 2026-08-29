@@ -19,15 +19,39 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-const maxAPIKeySaleBodyBytes = 16 * 1024
+const maxAPIKeySaleBodyBytes = 512 * 1024
 
 type apiKeySaleRequest struct {
-	Operation  string  `json:"operation"`
-	UserID     int64   `json:"user_id"`
-	GroupID    int64   `json:"group_id"`
-	QuotaDelta float64 `json:"quota_delta"`
-	Name       string  `json:"name"`
-	TargetKey  string  `json:"target_key"`
+	ReservationID int64   `json:"reservation_id"`
+	Operation     string  `json:"operation"`
+	UserID        int64   `json:"user_id"`
+	GroupID       int64   `json:"group_id"`
+	QuotaDelta    float64 `json:"quota_delta"`
+	Name          string  `json:"name"`
+	TargetKey     string  `json:"target_key"`
+}
+
+type apiKeySaleAvailabilityRequest struct {
+	GroupID int64 `json:"group_id"`
+}
+
+type apiKeySaleReserveRequest struct {
+	ExternalReference string    `json:"external_reference"`
+	Operation         string    `json:"operation"`
+	GroupID           int64     `json:"group_id"`
+	RequestedTokens   int64     `json:"requested_tokens"`
+	TargetKey         string    `json:"target_key"`
+	ExpiresAt         time.Time `json:"expires_at"`
+}
+
+type apiKeySaleReleaseRequest struct {
+	ReservationID int64 `json:"reservation_id"`
+}
+
+type apiKeySaleBatchRequest struct {
+	ReservationID int64                         `json:"reservation_id"`
+	GroupID       int64                         `json:"group_id"`
+	Items         []service.APIKeySaleBatchItem `json:"items"`
 }
 
 type apiKeySaleLookupRequest struct {
@@ -107,15 +131,115 @@ func verifyAPIKeySaleRequest(c *gin.Context, body []byte) bool {
 	return true
 }
 
-// FulfillSale atomically creates an API key or adds quota to an existing key.
-// POST /api/v1/admin/api-keys/sales/fulfill
-func (h *AdminAPIKeyHandler) FulfillSale(c *gin.Context) {
+func readVerifiedAPIKeySaleBody(c *gin.Context) ([]byte, bool) {
 	body, err := io.ReadAll(http.MaxBytesReader(c.Writer, c.Request.Body, maxAPIKeySaleBodyBytes))
 	if err != nil {
 		response.BadRequest(c, "Request body is invalid")
-		return
+		return nil, false
 	}
 	if !verifyAPIKeySaleRequest(c, body) {
+		return nil, false
+	}
+	return body, true
+}
+
+// SaleAvailability returns authoritative capacity after outstanding key quota and active holds.
+// POST /api/v1/admin/api-keys/sales/availability
+func (h *AdminAPIKeyHandler) SaleAvailability(c *gin.Context) {
+	body, ok := readVerifiedAPIKeySaleBody(c)
+	if !ok {
+		return
+	}
+	var req apiKeySaleAvailabilityRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		response.BadRequest(c, "Invalid request")
+		return
+	}
+	result, err := h.adminService.AdminGetAPIKeySaleAvailability(c.Request.Context(), req.GroupID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
+// ReserveSale atomically holds the full requested capacity before payment is exposed.
+// POST /api/v1/admin/api-keys/sales/reserve
+func (h *AdminAPIKeyHandler) ReserveSale(c *gin.Context) {
+	body, ok := readVerifiedAPIKeySaleBody(c)
+	if !ok {
+		return
+	}
+	var req apiKeySaleReserveRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		response.BadRequest(c, "Invalid request")
+		return
+	}
+	result, err := h.adminService.AdminReserveAPIKeySale(c.Request.Context(), service.APIKeySaleReserveInput{
+		ExternalReference: req.ExternalReference,
+		Operation:         req.Operation,
+		GroupID:           req.GroupID,
+		RequestedTokens:   req.RequestedTokens,
+		TargetKey:         req.TargetKey,
+		ExpiresAt:         req.ExpiresAt,
+	})
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
+// ReleaseSale idempotently gives unused capacity back to the pool.
+// POST /api/v1/admin/api-keys/sales/release
+func (h *AdminAPIKeyHandler) ReleaseSale(c *gin.Context) {
+	body, ok := readVerifiedAPIKeySaleBody(c)
+	if !ok {
+		return
+	}
+	var req apiKeySaleReleaseRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		response.BadRequest(c, "Invalid request")
+		return
+	}
+	result, err := h.adminService.AdminReleaseAPIKeySale(c.Request.Context(), req.ReservationID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
+// FulfillSaleBatch creates every key in a reservation atomically or creates none.
+// POST /api/v1/admin/api-keys/sales/fulfill-batch
+func (h *AdminAPIKeyHandler) FulfillSaleBatch(c *gin.Context) {
+	body, ok := readVerifiedAPIKeySaleBody(c)
+	if !ok {
+		return
+	}
+	var req apiKeySaleBatchRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		response.BadRequest(c, "Invalid request")
+		return
+	}
+	result, err := h.adminService.AdminFulfillAPIKeySaleBatch(c.Request.Context(), service.APIKeySaleBatchFulfillmentInput{
+		IdempotencyKey: c.GetHeader("Idempotency-Key"),
+		ReservationID:  req.ReservationID,
+		GroupID:        req.GroupID,
+		Items:          req.Items,
+	})
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
+// FulfillSale atomically creates an API key or adds quota to an existing key.
+// POST /api/v1/admin/api-keys/sales/fulfill
+func (h *AdminAPIKeyHandler) FulfillSale(c *gin.Context) {
+	body, ok := readVerifiedAPIKeySaleBody(c)
+	if !ok {
 		return
 	}
 	var req apiKeySaleRequest
@@ -125,6 +249,8 @@ func (h *AdminAPIKeyHandler) FulfillSale(c *gin.Context) {
 	}
 	result, err := h.adminService.AdminFulfillAPIKeySale(c.Request.Context(), service.APIKeySaleFulfillmentInput{
 		IdempotencyKey: c.GetHeader("Idempotency-Key"),
+		ReservationID:  req.ReservationID,
+		Legacy:         req.ReservationID <= 0,
 		Operation:      req.Operation,
 		UserID:         req.UserID,
 		GroupID:        req.GroupID,
@@ -160,12 +286,8 @@ func (h *AdminAPIKeyHandler) FulfillSale(c *gin.Context) {
 // LookupSale validates a pasted key before the customer is asked to pay.
 // POST /api/v1/admin/api-keys/sales/lookup
 func (h *AdminAPIKeyHandler) LookupSale(c *gin.Context) {
-	body, err := io.ReadAll(http.MaxBytesReader(c.Writer, c.Request.Body, maxAPIKeySaleBodyBytes))
-	if err != nil {
-		response.BadRequest(c, "Request body is invalid")
-		return
-	}
-	if !verifyAPIKeySaleRequest(c, body) {
+	body, ok := readVerifiedAPIKeySaleBody(c)
+	if !ok {
 		return
 	}
 	var req apiKeySaleLookupRequest
