@@ -39,6 +39,7 @@ const connectError = ref('')
 const usage = ref<UsageResponse | null>(null)
 const activeTab = ref<AppTab>('chat')
 const sidebarCollapsed = ref(false)
+const mobileDrawerOpen = ref(false)
 const theme = ref<ThemeMode>(readTheme())
 const reasoning = ref<ReasoningMode>('medium')
 const composerMode = ref<'chat' | 'image'>('chat')
@@ -98,6 +99,7 @@ function createConversation(): Conversation {
   conversations.value.unshift(conversation)
   activeConversationId.value = conversation.id
   activeTab.value = 'chat'
+  mobileDrawerOpen.value = false
   persistConversations()
   return conversation
 }
@@ -281,7 +283,13 @@ function addToGallery(url: string) {
 function selectConversation(id: string) {
   activeConversationId.value = id
   activeTab.value = 'chat'
+  mobileDrawerOpen.value = false
   void scrollToBottom()
+}
+
+function openMobileTab(tab: AppTab) {
+  activeTab.value = tab
+  mobileDrawerOpen.value = false
 }
 
 function deleteConversation(id: string) {
@@ -433,26 +441,62 @@ onBeforeUnmount(() => controller.value?.abort())
           </button>
         </div>
       </aside>
+
+      <div v-if="mobileDrawerOpen" class="mobile-drawer-scrim" @click="mobileDrawerOpen = false"></div>
+      <aside class="mobile-drawer" :class="{ open: mobileDrawerOpen }" aria-label="Menu Grok" :aria-hidden="!mobileDrawerOpen">
+        <div class="mobile-drawer-head">
+          <div class="mobile-drawer-brand"><GrokLogo /><strong>Grok</strong></div>
+          <button aria-label="Đóng menu" @click="mobileDrawerOpen = false">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
+          </button>
+        </div>
+        <button class="mobile-search" @click="openMobileTab('history')">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m16 16 5 5" /></svg>
+          <span>Tìm kiếm cuộc trò chuyện</span>
+        </button>
+        <nav class="mobile-drawer-nav">
+          <button @click="openMobileTab('imagine')">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 1.5 5.5L19 10l-5.5 1.5L12 17l-1.5-5.5L5 10l5.5-1.5z" /></svg><span>Tạo ảnh</span>
+          </button>
+          <button @click="openMobileTab('history')">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5M12 7v5l3 2" /></svg><span>Lịch sử</span>
+          </button>
+          <button @click="openMobileTab('settings')">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M4.9 4.9 7 7M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1 7 17M17 7l2.1-2.1" /></svg><span>Cài đặt</span>
+          </button>
+        </nav>
+        <section class="mobile-recents">
+          <h2>Gần đây</h2>
+          <button v-for="conversation in conversations" :key="conversation.id" @click="selectConversation(conversation.id)">
+            {{ conversation.title }}
+          </button>
+          <p v-if="!conversations.length">Chưa có cuộc trò chuyện.</p>
+        </section>
+        <div class="mobile-drawer-footer">
+          <button class="mobile-drawer-new" @click="createConversation">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg><span>Đoạn chat mới</span>
+          </button>
+          <button class="mobile-drawer-theme" :aria-label="theme === 'dark' ? 'Chuyển sang giao diện sáng' : 'Chuyển sang giao diện tối'" @click="toggleTheme">
+            <svg v-if="theme === 'dark'" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg>
+            <svg v-else viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 14.4A8.3 8.3 0 0 1 9.6 3.5 8.5 8.5 0 1 0 20.5 14.4z" /></svg>
+          </button>
+        </div>
+      </aside>
+
       <header class="app-header">
-        <button class="icon-button" aria-label="Tạo cuộc trò chuyện mới" @click="createConversation">
-          <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>
+        <button class="icon-button mobile-menu-button" aria-label="Mở menu" :aria-expanded="mobileDrawerOpen" @click="mobileDrawerOpen = true">
+          <svg viewBox="0 0 24 24"><path d="M5 8h14M5 16h10" /></svg>
         </button>
-        <button class="model-chip" @click="activeTab = 'settings'">
-          <span class="model-dot"></span>
-          <span>Grok 4.6</span>
-          <small>{{ reasoning === 'high' ? 'Thinking' : reasoning === 'low' ? 'Fast' : 'Standard' }}</small>
-        </button>
+        <nav class="mobile-mode-switch" aria-label="Chế độ làm việc">
+          <button :class="{ active: activeTab === 'chat' }" @click="activeTab = 'chat'">Trò chuyện</button>
+          <button :class="{ active: activeTab === 'imagine' }" @click="activeTab = 'imagine'">Tạo ảnh</button>
+        </nav>
         <nav class="desktop-mode-switch" aria-label="Chế độ làm việc">
           <button :class="{ active: activeTab === 'chat' }" @click="activeTab = 'chat'">Trò chuyện</button>
           <button :class="{ active: activeTab === 'imagine' }" @click="activeTab = 'imagine'">Tạo ảnh</button>
         </nav>
-        <button class="theme-toggle-mobile" :aria-label="theme === 'dark' ? 'Chuyển sang giao diện sáng' : 'Chuyển sang giao diện tối'" @click="toggleTheme">
-          <svg v-if="theme === 'dark'" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg>
-          <svg v-else viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 14.4A8.3 8.3 0 0 1 9.6 3.5 8.5 8.5 0 1 0 20.5 14.4z" /></svg>
-        </button>
-        <button class="balance-pill" @click="refreshUsage">
-          <span>{{ remainingLabel }}</span>
-          <small>còn lại</small>
+        <button class="mobile-history-button" aria-label="Mở lịch sử" @click="activeTab = 'history'">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z" /></svg>
         </button>
       </header>
 
@@ -1186,9 +1230,103 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .theme-toggle-mobile:hover { color: var(--theme-text); background: var(--theme-surface-hover); }
 .bottom-nav { border-color: var(--theme-border); background: color-mix(in srgb,var(--theme-canvas) 94%,transparent); }
 .bottom-nav button { color: var(--theme-text-tertiary); }.bottom-nav button.active { color: var(--theme-text); background: var(--theme-surface-hover); }
+.mobile-mode-switch,.mobile-history-button,.mobile-drawer,.mobile-drawer-scrim { display: none; }
 
 @media (max-width: 899px) {
-  .app-header { grid-template-columns: 42px minmax(0,1fr) 40px auto; }
+  .app-shell { grid-template-rows: auto minmax(0,1fr); }
+  .app-header {
+    grid-template-columns: 52px minmax(0,1fr) 52px;
+    gap: 10px;
+    height: calc(78px + env(safe-area-inset-top,0px));
+    padding: env(safe-area-inset-top,0px) 16px 8px;
+    border: 0;
+    background: var(--theme-canvas);
+    backdrop-filter: none;
+  }
+  .mobile-menu-button,.mobile-history-button {
+    display: grid;
+    place-items: center;
+    width: 52px;
+    height: 52px;
+    padding: 0;
+    color: var(--theme-text);
+    border: 1px solid var(--theme-border);
+    border-radius: 50%;
+    background: var(--theme-surface-raised);
+  }
+  .mobile-menu-button svg,.mobile-history-button svg { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .mobile-mode-switch {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    width: min(100%,320px);
+    height: 54px;
+    margin: 0 auto;
+    padding: 5px;
+    border: 1px solid var(--theme-border);
+    border-radius: 27px;
+    background: var(--theme-surface-raised);
+  }
+  .mobile-mode-switch button { color: var(--theme-text-secondary); border: 0; border-radius: 22px; background: transparent; font-size: 15px; font-weight: 620; }
+  .mobile-mode-switch button.active { color: var(--theme-text); background: var(--theme-surface-active); box-shadow: 0 1px 3px color-mix(in srgb,var(--theme-text) 10%,transparent); }
+  .desktop-mode-switch { display: none; }
+  .bottom-nav { display: none; }
+  .messages { padding: 14px 16px 158px; }
+  .chat-empty .empty-chat { display: none; }
+  .composer-wrap { padding: 28px 14px max(12px,env(safe-area-inset-bottom)); background: linear-gradient(transparent,var(--theme-canvas) 28%); }
+  .composer {
+    grid-template-columns: 48px minmax(0,1fr) 48px 48px;
+    grid-template-rows: minmax(44px,auto) 48px;
+    align-items: center;
+    gap: 4px;
+    min-height: 112px;
+    padding: 12px;
+    border-color: var(--theme-border-strong);
+    border-radius: 30px;
+    background: var(--theme-input);
+    box-shadow: none;
+  }
+  .composer textarea { grid-column: 1/-1; grid-row: 1; min-height: 44px; padding: 6px 10px; color: var(--theme-text); }
+  .composer-action { grid-column: 1; grid-row: 2; }
+  .spark-button { grid-column: 3; grid-row: 2; }
+  .send-button { grid-column: 4; grid-row: 2; }
+  .composer-action,.spark-button,.send-button { width: 48px; height: 48px; }
+  .composer-action svg,.spark-button svg,.send-button svg { width: 25px; height: 25px; }
+  .composer-note { display: none; }
+  .mode-banner { margin-inline: 3px; }
+
+  .mobile-drawer-scrim { position: fixed; inset: 0; display: block; z-index: 40; background: rgba(0,0,0,.52); backdrop-filter: blur(2px); }
+  .mobile-drawer {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 41;
+    display: flex;
+    flex-direction: column;
+    width: min(86vw,380px);
+    padding: max(18px,env(safe-area-inset-top)) 18px max(18px,env(safe-area-inset-bottom));
+    color: var(--theme-text);
+    background: var(--theme-sidebar);
+    box-shadow: 24px 0 80px rgba(0,0,0,.32);
+    transform: translateX(-105%);
+    transition: transform .22s ease;
+  }
+  .mobile-drawer.open { transform: translateX(0); }
+  .mobile-drawer-head { display: flex; align-items: center; justify-content: space-between; min-height: 52px; }
+  .mobile-drawer-brand { display: flex; align-items: center; gap: 12px; font-size: 23px; letter-spacing: -.03em; }
+  .mobile-drawer-brand .grok-logo { width: 30px; height: 30px; }
+  .mobile-drawer-head > button,.mobile-drawer-theme { display: grid; place-items: center; width: 48px; height: 48px; padding: 0; color: var(--theme-text); border: 0; border-radius: 50%; background: var(--theme-surface-raised); }
+  .mobile-drawer-head svg,.mobile-drawer-theme svg { width: 23px; height: 23px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+  .mobile-search { display: flex; align-items: center; gap: 12px; min-height: 50px; margin: 18px 0 10px; padding: 0 15px; color: var(--theme-text-secondary); border: 1px solid var(--theme-border); border-radius: 16px; background: var(--theme-input); text-align: left; }
+  .mobile-search svg,.mobile-drawer-nav svg,.mobile-drawer-new svg { flex: 0 0 24px; width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .mobile-drawer-nav { display: grid; gap: 2px; padding-bottom: 14px; border-bottom: 1px solid var(--theme-border); }
+  .mobile-drawer-nav button { display: flex; align-items: center; gap: 14px; min-height: 52px; padding: 0 12px; color: var(--theme-text); border: 0; border-radius: 14px; background: transparent; text-align: left; font-size: 16px; }
+  .mobile-drawer-nav button:active { background: var(--theme-surface-active); }
+  .mobile-recents { flex: 1; min-height: 0; overflow-y: auto; padding: 22px 4px 18px; overscroll-behavior: contain; }
+  .mobile-recents h2 { margin: 0 8px 12px; font-size: 14px; }
+  .mobile-recents button { display: block; width: 100%; min-height: 48px; padding: 0 8px; overflow: hidden; color: var(--theme-text-secondary); border: 0; border-radius: 11px; background: transparent; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
+  .mobile-recents button:active { color: var(--theme-text); background: var(--theme-surface-active); }
+  .mobile-recents p { margin: 12px 8px; color: var(--theme-text-tertiary); font-size: 13px; }
+  .mobile-drawer-footer { display: grid; grid-template-columns: minmax(0,1fr) 48px; gap: 10px; padding-top: 14px; border-top: 1px solid var(--theme-border); }
+  .mobile-drawer-new { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 52px; color: var(--theme-canvas); border: 0; border-radius: 26px; background: var(--theme-text); font-weight: 750; }
 }
 
 @media (min-width: 900px) {

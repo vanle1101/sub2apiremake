@@ -49,4 +49,18 @@ describe('GrokChatView image composer', () => {
     expect(wrapper.get('.grok-mobile').attributes('data-theme')).toBe('light')
     expect(localStorage.getItem('grok-mobile.theme.v1')).toBe('light')
   })
+
+  it('opens the mobile drawer and navigates to image creation', async () => {
+    const wrapper = mount(GrokChatView)
+    await flushPromises()
+
+    expect(wrapper.get('.mobile-drawer').classes()).not.toContain('open')
+    await wrapper.get('button[aria-label="Mở menu"]').trigger('click')
+
+    expect(wrapper.get('.mobile-drawer').classes()).toContain('open')
+    await wrapper.get('.mobile-drawer-nav button').trigger('click')
+
+    expect(wrapper.get('.mobile-drawer').classes()).not.toContain('open')
+    expect(wrapper.get('.imagine-page').exists()).toBe(true)
+  })
 })
