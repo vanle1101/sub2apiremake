@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import DOMPurify from 'dompurify'
 import { marked } from 'marked'
+import GrokLogo from '@/components/grok/GrokLogo.vue'
 import { generateImage, getUsage, streamChat } from '@/features/grok-chat/api'
 import { prepareImage } from '@/features/grok-chat/image'
 import {
@@ -10,15 +11,18 @@ import {
   readAPIKey,
   readConversations,
   readGallery,
+  readTheme,
   saveAPIKey,
   saveConversations,
   saveGallery,
+  saveTheme,
 } from '@/features/grok-chat/storage'
 import type {
   ChatAttachment,
   ChatMessage,
   Conversation,
   ReasoningMode,
+  ThemeMode,
   UsageResponse,
 } from '@/features/grok-chat/types'
 
@@ -35,6 +39,7 @@ const connectError = ref('')
 const usage = ref<UsageResponse | null>(null)
 const activeTab = ref<AppTab>('chat')
 const sidebarCollapsed = ref(false)
+const theme = ref<ThemeMode>(readTheme())
 const reasoning = ref<ReasoningMode>('medium')
 const composerMode = ref<'chat' | 'image'>('chat')
 const prompt = ref('')
@@ -303,6 +308,15 @@ function switchComposerMode() {
   composerMode.value = composerMode.value === 'chat' ? 'image' : 'chat'
 }
 
+function setTheme(value: ThemeMode) {
+  theme.value = value
+  saveTheme(value)
+}
+
+function toggleTheme() {
+  setTheme(theme.value === 'dark' ? 'light' : 'dark')
+}
+
 watch(conversations, persistConversations, { deep: true })
 watch(activeConversationId, scrollToBottom)
 
@@ -335,12 +349,12 @@ onBeforeUnmount(() => controller.value?.abort())
 </script>
 
 <template>
-  <div class="grok-mobile">
+  <div class="grok-mobile" :data-theme="theme">
     <section v-if="!connected" class="connect-screen">
       <div class="connect-glow glow-one"></div>
       <div class="connect-glow glow-two"></div>
       <div class="connect-card">
-        <div class="brand-mark">G</div>
+        <div class="brand-mark"><GrokLogo /></div>
         <p class="eyebrow">GROK MOBILE</p>
         <h1>Trợ lý AI của bạn</h1>
         <p class="connect-copy">Chat, đọc ảnh và sáng tạo hình ảnh với Grok 4.6.</p>
@@ -370,7 +384,7 @@ onBeforeUnmount(() => controller.value?.abort())
     <div v-else class="app-shell" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
       <aside class="desktop-sidebar" aria-label="Điều hướng chính">
         <div class="sidebar-brand">
-          <div class="brand-glyph">G</div>
+          <div class="brand-glyph"><GrokLogo /></div>
           <div class="sidebar-brand-copy"><strong>Grok</strong><small>Grok 4.6</small></div>
           <button
             class="sidebar-toggle"
@@ -409,6 +423,11 @@ onBeforeUnmount(() => controller.value?.abort())
           <button class="sidebar-usage" @click="refreshUsage">
             <span><i></i> Hạn mức còn lại</span><strong>{{ remainingLabel }}</strong>
           </button>
+          <button class="theme-toggle" :aria-label="theme === 'dark' ? 'Chuyển sang giao diện sáng' : 'Chuyển sang giao diện tối'" @click="toggleTheme">
+            <svg v-if="theme === 'dark'" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg>
+            <svg v-else viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 14.4A8.3 8.3 0 0 1 9.6 3.5 8.5 8.5 0 1 0 20.5 14.4z" /></svg>
+            <span>{{ theme === 'dark' ? 'Giao diện sáng' : 'Giao diện tối' }}</span>
+          </button>
           <button class="sidebar-settings" :class="{ active: activeTab === 'settings' }" @click="activeTab = 'settings'">
             <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M4.9 4.9 7 7M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1 7 17M17 7l2.1-2.1" /></svg><span>Cài đặt</span>
           </button>
@@ -427,6 +446,10 @@ onBeforeUnmount(() => controller.value?.abort())
           <button :class="{ active: activeTab === 'chat' }" @click="activeTab = 'chat'">Trò chuyện</button>
           <button :class="{ active: activeTab === 'imagine' }" @click="activeTab = 'imagine'">Tạo ảnh</button>
         </nav>
+        <button class="theme-toggle-mobile" :aria-label="theme === 'dark' ? 'Chuyển sang giao diện sáng' : 'Chuyển sang giao diện tối'" @click="toggleTheme">
+          <svg v-if="theme === 'dark'" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg>
+          <svg v-else viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 14.4A8.3 8.3 0 0 1 9.6 3.5 8.5 8.5 0 1 0 20.5 14.4z" /></svg>
+        </button>
         <button class="balance-pill" @click="refreshUsage">
           <span>{{ remainingLabel }}</span>
           <small>còn lại</small>
@@ -436,7 +459,7 @@ onBeforeUnmount(() => controller.value?.abort())
       <main v-if="activeTab === 'chat'" class="chat-page" :class="{ 'chat-empty': !activeConversation?.messages.length }">
         <div ref="messageScroller" class="messages">
           <div v-if="!activeConversation?.messages.length" class="empty-chat">
-          <div class="orb"><span>G</span></div>
+          <div class="orb"><span><GrokLogo /></span></div>
           <span class="empty-kicker">GROK 4.6</span>
             <h2><span class="mobile-heading">Hôm nay bạn muốn làm gì?</span><span class="desktop-heading">Hôm nay bạn có ý tưởng gì?</span></h2>
             <p>Hỏi bất cứ điều gì, gửi ảnh để phân tích hoặc tạo một hình ảnh mới.</p>
@@ -454,7 +477,7 @@ onBeforeUnmount(() => controller.value?.abort())
             class="message-row"
             :class="[`message-${message.role}`, { 'message-error': message.error }]"
           >
-            <div v-if="message.role === 'assistant'" class="assistant-avatar">G</div>
+            <div v-if="message.role === 'assistant'" class="assistant-avatar"><GrokLogo /></div>
             <div class="message-content">
               <div v-if="message.attachments?.length" class="message-attachments">
                 <img v-for="image in message.attachments" :key="image.id" :src="image.dataUrl" :alt="image.name" />
@@ -590,7 +613,7 @@ onBeforeUnmount(() => controller.value?.abort())
         <button class="new-chat-card" @click="createConversation"><span>＋</span><div><strong>Cuộc trò chuyện mới</strong><small>Bắt đầu với Grok 4.6</small></div></button>
         <div class="history-list">
           <article v-for="conversation in conversations" :key="conversation.id" @click="selectConversation(conversation.id)">
-            <div class="history-icon">G</div>
+            <div class="history-icon"><GrokLogo /></div>
             <div><strong>{{ conversation.title }}</strong><small>{{ conversation.messages.length }} tin nhắn · {{ new Date(conversation.updatedAt).toLocaleDateString('vi-VN') }}</small></div>
             <button aria-label="Xóa cuộc trò chuyện" @click.stop="deleteConversation(conversation.id)">×</button>
           </article>
@@ -604,6 +627,19 @@ onBeforeUnmount(() => controller.value?.abort())
           <div><small>Hạn mức còn lại</small><strong>{{ remainingLabel }}</strong></div>
           <div><small>Token đã xử lý</small><strong>{{ usedTokensLabel }}</strong></div>
           <button @click="refreshUsage">Làm mới</button>
+        </section>
+        <section class="settings-card">
+          <h2>Giao diện</h2>
+          <div class="theme-segment" role="radiogroup" aria-label="Chọn giao diện">
+            <button role="radio" :aria-checked="theme === 'light'" :class="{ active: theme === 'light' }" @click="setTheme('light')">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg>
+              Sáng
+            </button>
+            <button role="radio" :aria-checked="theme === 'dark'" :class="{ active: theme === 'dark' }" @click="setTheme('dark')">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 14.4A8.3 8.3 0 0 1 9.6 3.5 8.5 8.5 0 1 0 20.5 14.4z" /></svg>
+              Tối
+            </button>
+          </div>
         </section>
         <section class="settings-card">
           <h2>Chế độ trả lời</h2>
@@ -1025,5 +1061,171 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 
 @media (prefers-reduced-motion: reduce) {
   *,*::before,*::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}
+
+/* Adaptive theme system — informed by Grok's monochrome identity and ChatGPT's quiet workspace. */
+.grok-mobile[data-theme="dark"] {
+  --theme-canvas: #0a0a0a;
+  --theme-sidebar: #111111;
+  --theme-surface: #171717;
+  --theme-surface-raised: #1d1d1d;
+  --theme-surface-hover: #222222;
+  --theme-surface-active: #292929;
+  --theme-input: #202020;
+  --theme-text: #f4f4f4;
+  --theme-text-secondary: #b8b8b8;
+  --theme-text-tertiary: #7c7c7c;
+  --theme-border: rgba(255,255,255,.1);
+  --theme-border-strong: rgba(255,255,255,.18);
+  --theme-accent: #f1f1f1;
+  --theme-on-accent: #111111;
+  --theme-success: #34d399;
+  --theme-danger: #ff8f8f;
+  --theme-focus: 0 0 0 3px rgba(255,255,255,.18);
+  --theme-shadow: 0 18px 48px rgba(0,0,0,.34);
+  color-scheme: dark;
+}
+.grok-mobile[data-theme="light"] {
+  --theme-canvas: #ffffff;
+  --theme-sidebar: #f7f7f5;
+  --theme-surface: #ffffff;
+  --theme-surface-raised: #fafafa;
+  --theme-surface-hover: #ececea;
+  --theme-surface-active: #e6e6e3;
+  --theme-input: #f3f3f1;
+  --theme-text: #171717;
+  --theme-text-secondary: #525252;
+  --theme-text-tertiary: #777773;
+  --theme-border: rgba(23,23,23,.1);
+  --theme-border-strong: rgba(23,23,23,.18);
+  --theme-accent: #171717;
+  --theme-on-accent: #ffffff;
+  --theme-success: #087f5b;
+  --theme-danger: #b42318;
+  --theme-focus: 0 0 0 3px rgba(23,23,23,.14);
+  --theme-shadow: 0 18px 48px rgba(30,30,20,.1);
+  color-scheme: light;
+}
+:global(html:has(.grok-mobile[data-theme="dark"])),
+:global(body:has(.grok-mobile[data-theme="dark"])),
+:global(#app:has(.grok-mobile[data-theme="dark"])) { background: #0a0a0a; color-scheme: dark; }
+:global(html:has(.grok-mobile[data-theme="light"])),
+:global(body:has(.grok-mobile[data-theme="light"])),
+:global(#app:has(.grok-mobile[data-theme="light"])) { background: #fff; color-scheme: light; }
+
+.grok-mobile { color: var(--theme-text); background: var(--theme-canvas); }
+.app-shell,.chat-page,.imagine-page,.history-page,.settings-page { background: var(--theme-canvas); }
+.app-header { border-color: var(--theme-border); background: color-mix(in srgb,var(--theme-canvas) 88%,transparent); }
+.icon-button,.balance-pill { color: var(--theme-text); border-color: var(--theme-border); background: var(--theme-surface-raised); }
+.model-chip { color: var(--theme-text); }.model-chip small { color: var(--theme-text-tertiary); }
+.balance-pill small,.composer-note,.empty-chat > p { color: var(--theme-text-tertiary); }
+.connect-screen { background: var(--theme-canvas); }
+.connect-glow { display: none; }
+.connect-card { color: var(--theme-text); border-color: var(--theme-border); background: var(--theme-surface); box-shadow: var(--theme-shadow); }
+.connect-copy,.usage-link,.remember-row { color: var(--theme-text-secondary); }
+.key-field span { color: var(--theme-text-secondary); }
+.key-field input { color: var(--theme-text); border-color: var(--theme-border); background: var(--theme-input); }
+.key-field input:focus { border-color: var(--theme-border-strong); box-shadow: var(--theme-focus); }
+.brand-mark { color: var(--theme-text); border: 1px solid var(--theme-border); background: var(--theme-surface-raised); box-shadow: none; }
+.brand-mark .grok-logo { width: 30px; height: 30px; }
+.primary-button,.imagine-button { color: var(--theme-on-accent); background: var(--theme-accent); box-shadow: none; }
+.primary-button:hover:not(:disabled),.imagine-button:hover:not(:disabled) { opacity: .88; background: var(--theme-accent); }
+
+.messages { scrollbar-color: var(--theme-border-strong) transparent; }
+.message-user .message-content { color: var(--theme-text); border-color: var(--theme-border); background: var(--theme-surface-hover); }
+.markdown-body { color: var(--theme-text); }
+.markdown-body :deep(pre) { border-color: var(--theme-border); background: var(--theme-surface-raised); }
+.markdown-body :deep(a) { color: var(--theme-text); text-decoration: underline; text-underline-offset: 3px; }
+.message-error .message-content,.form-error { color: var(--theme-danger); }
+.assistant-avatar { color: var(--theme-text); background: transparent; }
+.assistant-avatar .grok-logo { width: 22px; height: 22px; }
+.orb { color: var(--theme-text); border: 1px solid var(--theme-border); background: var(--theme-surface); box-shadow: none; }
+.orb span { color: inherit; background: transparent; }.orb .grok-logo { width: 32px; height: 32px; }
+.suggestion-grid button { color: var(--theme-text-secondary); border-color: var(--theme-border); background: var(--theme-surface); }
+.suggestion-grid button:hover { color: var(--theme-text); border-color: var(--theme-border-strong); background: var(--theme-surface-hover); }
+.composer-wrap { background: linear-gradient(transparent,color-mix(in srgb,var(--theme-canvas) 96%,transparent) 32%,var(--theme-canvas) 60%); }
+.composer { border-color: var(--theme-border-strong); background: var(--theme-input); box-shadow: var(--theme-shadow); }
+.composer:hover,.composer:focus-within { border-color: var(--theme-border-strong); box-shadow: var(--theme-shadow),var(--theme-focus); }
+.composer textarea { color: var(--theme-text); }.composer textarea::placeholder { color: var(--theme-text-tertiary); }
+.composer-action,.spark-button { color: var(--theme-text-secondary); }
+.composer-action:hover,.spark-button:hover { color: var(--theme-text); background: var(--theme-surface-hover); }
+.spark-button.active,.send-button { color: var(--theme-on-accent); background: var(--theme-accent); }
+.send-button:disabled { color: var(--theme-text-tertiary); background: var(--theme-surface-active); }
+.mode-banner { color: var(--theme-text); border-color: var(--theme-border); background: var(--theme-surface-raised); }
+.image-quick-options label > span,.mode-banner .mode-close { color: var(--theme-text-tertiary); }
+.image-quick-options select { color: var(--theme-text); border-color: var(--theme-border); background: var(--theme-input); }
+.mode-banner .mode-close:hover { color: var(--theme-text); background: var(--theme-surface-hover); }
+.desktop-quick-actions button { color: var(--theme-text-secondary); border-color: var(--theme-border); background: transparent; }
+.desktop-quick-actions button:hover { color: var(--theme-text); border-color: var(--theme-border-strong); background: var(--theme-surface-raised); }
+.desktop-quick-actions strong { color: var(--theme-text); }.desktop-quick-actions small { color: var(--theme-text-tertiary); }
+
+.scroll-page,.imagine-page { background: var(--theme-canvas); }
+.imagine-spark { color: var(--theme-text); border-color: var(--theme-border); background: var(--theme-surface-raised); text-shadow: none; }
+.imagine-spark svg { stroke: currentColor; }
+.imagine-hero > p:last-child,.option-row label > span,.section-heading span,.empty-list { color: var(--theme-text-tertiary); }
+.imagine-card,.settings-card,.usage-card { color: var(--theme-text); border-color: var(--theme-border); background: var(--theme-surface); box-shadow: none; }
+.imagine-card textarea,.option-row select { color: var(--theme-text); border-color: var(--theme-border); background: var(--theme-input); }
+.new-chat-card,.history-list article { color: var(--theme-text); border-color: var(--theme-border); background: var(--theme-surface); }
+.new-chat-card:hover,.history-list article:hover { border-color: var(--theme-border-strong); background: var(--theme-surface-hover); }
+.new-chat-card > span,.history-icon { color: var(--theme-on-accent); background: var(--theme-accent); }
+.history-icon .grok-logo { width: 19px; height: 19px; }
+.new-chat-card small,.history-list small { color: var(--theme-text-tertiary); }
+.history-list article > button { color: var(--theme-text-tertiary); }
+.usage-card { background: var(--theme-surface-raised); }.usage-card small { color: var(--theme-text-tertiary); }
+.usage-card button { color: var(--theme-text); border-color: var(--theme-border); background: var(--theme-surface-hover); }
+.reasoning-option { border-color: var(--theme-border); }.reasoning-option:hover { background: var(--theme-surface-raised); }
+.reasoning-option small,.account-card > div { color: var(--theme-text-tertiary); }.account-card > div { border-color: var(--theme-border); }
+.account-card code,.account-card strong { color: var(--theme-text); }.account-card .online { color: var(--theme-success); }
+.reasoning-option em { color: var(--theme-on-accent); background: var(--theme-accent); }
+.danger-button { color: var(--theme-danger); border-color: color-mix(in srgb,var(--theme-danger) 24%,transparent); background: color-mix(in srgb,var(--theme-danger) 8%,transparent); }
+.theme-segment { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 4px; border: 1px solid var(--theme-border); border-radius: 14px; background: var(--theme-input); }
+.theme-segment button { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 42px; color: var(--theme-text-secondary); border: 0; border-radius: 10px; background: transparent; font-weight: 650; }
+.theme-segment button.active { color: var(--theme-text); background: var(--theme-surface); box-shadow: 0 1px 3px color-mix(in srgb,var(--theme-text) 12%,transparent); }
+.theme-segment svg,.theme-toggle svg,.theme-toggle-mobile svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.theme-toggle-mobile { display: grid; place-items: center; width: 40px; height: 40px; padding: 0; color: var(--theme-text-secondary); border: 0; border-radius: 12px; background: transparent; }
+.theme-toggle-mobile:hover { color: var(--theme-text); background: var(--theme-surface-hover); }
+.bottom-nav { border-color: var(--theme-border); background: color-mix(in srgb,var(--theme-canvas) 94%,transparent); }
+.bottom-nav button { color: var(--theme-text-tertiary); }.bottom-nav button.active { color: var(--theme-text); background: var(--theme-surface-hover); }
+
+@media (max-width: 899px) {
+  .app-header { grid-template-columns: 42px minmax(0,1fr) 40px auto; }
+}
+
+@media (min-width: 900px) {
+  .app-shell { grid-template-columns: 276px minmax(0,1fr); background: var(--theme-canvas); }
+  .app-shell.sidebar-collapsed { grid-template-columns: 68px minmax(0,1fr); }
+  .desktop-sidebar { padding: 12px; border-color: var(--theme-border); background: var(--theme-sidebar); }
+  .sidebar-brand { min-height: 48px; gap: 10px; padding: 4px 8px 14px; }
+  .brand-glyph { flex: 0 0 28px; width: 28px; height: 28px; color: var(--theme-text); border-radius: 0; background: transparent; box-shadow: none; }
+  .brand-glyph .grok-logo { width: 27px; height: 27px; }
+  .sidebar-brand strong { color: var(--theme-text); font-size: 16px; font-weight: 720; letter-spacing: -.02em; }
+  .sidebar-brand small { color: var(--theme-text-tertiary); font-size: 10px; }
+  .sidebar-toggle { color: var(--theme-text-tertiary); }.sidebar-toggle:hover { color: var(--theme-text); background: var(--theme-surface-hover); }
+  .sidebar-new { min-height: 44px; padding: 0 13px; color: var(--theme-text); border: 1px solid var(--theme-border); border-radius: 13px; background: var(--theme-surface); font-weight: 650; }
+  .sidebar-new:hover { border-color: var(--theme-border-strong); background: var(--theme-surface-hover); }
+  .sidebar-nav { gap: 3px; margin-top: 12px; }
+  .sidebar-nav button,.sidebar-settings,.theme-toggle { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 42px; padding: 0 12px; color: var(--theme-text-secondary); border: 0; border-radius: 11px; background: transparent; text-align: left; }
+  .sidebar-nav button:hover,.sidebar-settings:hover,.theme-toggle:hover { color: var(--theme-text); background: var(--theme-surface-hover); }
+  .sidebar-nav button.active,.sidebar-settings.active { color: var(--theme-text); background: var(--theme-surface-active); }
+  .sidebar-recents { margin-top: 24px; }
+  .sidebar-recents > p { margin: 0 12px 8px; color: var(--theme-text-tertiary); font-size: 11px; font-weight: 650; }
+  .sidebar-recents button { min-height: 36px; padding: 0 12px; color: var(--theme-text-secondary); border-radius: 9px; }
+  .sidebar-recents button:hover,.sidebar-recents button.active { color: var(--theme-text); background: var(--theme-surface-hover); }
+  .sidebar-footer { gap: 4px; padding-top: 10px; border-color: var(--theme-border); }
+  .sidebar-usage { padding: 11px 12px; border: 1px solid var(--theme-border); border-radius: 13px; background: var(--theme-surface); }
+  .sidebar-usage:hover { border-color: var(--theme-border-strong); background: var(--theme-surface-hover); }
+  .sidebar-usage span { color: var(--theme-text-tertiary); }.sidebar-usage strong { color: var(--theme-text); }
+  .theme-toggle-mobile { display: none; }
+  .theme-toggle svg,.sidebar-settings svg { flex: 0 0 20px; }
+  .sidebar-collapsed .brand-glyph { display: grid; }
+  .sidebar-collapsed .sidebar-brand-copy,.sidebar-collapsed .theme-toggle span { display: none; }
+  .sidebar-collapsed .theme-toggle { justify-content: center; padding: 0; }
+  .app-header { background: var(--theme-canvas); }
+  .desktop-mode-switch { border-color: var(--theme-border); background: var(--theme-surface-raised); }
+  .desktop-mode-switch button { color: var(--theme-text-tertiary); }
+  .desktop-mode-switch button:hover { color: var(--theme-text); }
+  .desktop-mode-switch button.active { color: var(--theme-text); background: var(--theme-surface-active); box-shadow: none; }
+  .chat-empty .composer-wrap { background: transparent; }
+  .empty-chat h2 { color: var(--theme-text); }
 }
 </style>

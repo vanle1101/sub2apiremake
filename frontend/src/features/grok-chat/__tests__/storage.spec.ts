@@ -1,5 +1,13 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { clearAPIKey, readAPIKey, readConversations, saveAPIKey, saveConversations } from '../storage'
+import {
+  clearAPIKey,
+  readAPIKey,
+  readConversations,
+  readTheme,
+  saveAPIKey,
+  saveConversations,
+  saveTheme,
+} from '../storage'
 import type { Conversation } from '../types'
 
 describe('grok chat local storage', () => {
@@ -34,5 +42,12 @@ describe('grok chat local storage', () => {
     const restored = readConversations()
     expect(restored).toHaveLength(20)
     expect(restored[0].id).toBe('chat-23')
+  })
+
+  it('persists the selected color theme', () => {
+    saveTheme('light')
+    expect(readTheme()).toBe('light')
+    saveTheme('dark')
+    expect(readTheme()).toBe('dark')
   })
 })

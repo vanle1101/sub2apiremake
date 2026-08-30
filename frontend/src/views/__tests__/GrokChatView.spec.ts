@@ -14,6 +14,7 @@ import GrokChatView from '../GrokChatView.vue'
 describe('GrokChatView image composer', () => {
   beforeEach(() => {
     localStorage.clear()
+    localStorage.setItem('grok-mobile.theme.v1', 'dark')
     window.history.replaceState({}, '', '/chat?preview')
     generateImage.mockReset()
     generateImage.mockResolvedValue({ url: 'data:image/png;base64,dGVzdA==' })
@@ -35,5 +36,17 @@ describe('GrokChatView image composer', () => {
       size: '1024x1536',
       prompt: 'Một chú mèo phi hành gia',
     }))
+  })
+
+  it('switches and persists the light theme from the workspace', async () => {
+    const wrapper = mount(GrokChatView)
+    await flushPromises()
+
+    expect(wrapper.get('.grok-mobile').attributes('data-theme')).toBe('dark')
+    expect(wrapper.findAll('.grok-logo').length).toBeGreaterThan(1)
+    await wrapper.get('button[aria-label="Chuyển sang giao diện sáng"]').trigger('click')
+
+    expect(wrapper.get('.grok-mobile').attributes('data-theme')).toBe('light')
+    expect(localStorage.getItem('grok-mobile.theme.v1')).toBe('light')
   })
 })

@@ -1,9 +1,10 @@
-import type { Conversation } from './types'
+import type { Conversation, ThemeMode } from './types'
 
 const KEY_STORAGE = 'grok-mobile.api-key'
 const SESSION_KEY_STORAGE = 'grok-mobile.session-api-key'
 const CONVERSATIONS_STORAGE = 'grok-mobile.conversations.v1'
 const GALLERY_STORAGE = 'grok-mobile.gallery.v1'
+const THEME_STORAGE = 'grok-mobile.theme.v1'
 
 export function readAPIKey(): string {
   return sessionStorage.getItem(SESSION_KEY_STORAGE) || localStorage.getItem(KEY_STORAGE) || ''
@@ -66,6 +67,18 @@ export function saveGallery(images: string[]): void {
     const compact = images.filter((image) => !image.startsWith('data:')).slice(0, 12)
     localStorage.setItem(GALLERY_STORAGE, JSON.stringify(compact))
   }
+}
+
+export function readTheme(): ThemeMode {
+  const stored = localStorage.getItem(THEME_STORAGE)
+  if (stored === 'light' || stored === 'dark') return stored
+  return typeof window !== 'undefined' && window.matchMedia?.('(prefers-color-scheme: light)').matches
+    ? 'light'
+    : 'dark'
+}
+
+export function saveTheme(theme: ThemeMode): void {
+  localStorage.setItem(THEME_STORAGE, theme)
 }
 
 export function createId(prefix: string): string {

@@ -1,4 +1,5 @@
 export type ReasoningMode = 'low' | 'medium' | 'high'
+export type ThemeMode = 'light' | 'dark'
 
 export interface ChatAttachment {
   id: string
