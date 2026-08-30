@@ -366,6 +366,44 @@ onBeforeUnmount(() => controller.value?.abort())
     </section>
 
     <div v-else class="app-shell">
+      <aside class="desktop-sidebar" aria-label="Điều hướng chính">
+        <div class="sidebar-brand">
+          <div class="brand-glyph">G</div>
+          <div><strong>Grok</strong><small>AI Workspace</small></div>
+        </div>
+        <button class="sidebar-new" @click="createConversation">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+          <span>Cuộc trò chuyện mới</span>
+        </button>
+        <nav class="sidebar-nav">
+          <button :class="{ active: activeTab === 'chat' }" @click="activeTab = 'chat'">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z" /></svg><span>Chat</span>
+          </button>
+          <button :class="{ active: activeTab === 'imagine' }" @click="activeTab = 'imagine'">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 1.5 5.5L19 10l-5.5 1.5L12 17l-1.5-5.5L5 10l5.5-1.5z" /><path d="m19 16 .7 2.3L22 19l-2.3.7L19 22l-.7-2.3L16 19l2.3-.7z" /></svg><span>Imagine</span>
+          </button>
+          <button :class="{ active: activeTab === 'history' }" @click="activeTab = 'history'">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5M12 7v5l3 2" /></svg><span>Lịch sử</span>
+          </button>
+        </nav>
+        <div class="sidebar-recents">
+          <p>Gần đây</p>
+          <button
+            v-for="conversation in conversations.slice(0, 5)"
+            :key="conversation.id"
+            :class="{ active: activeConversationId === conversation.id && activeTab === 'chat' }"
+            @click="selectConversation(conversation.id)"
+          >{{ conversation.title }}</button>
+        </div>
+        <div class="sidebar-footer">
+          <button class="sidebar-usage" @click="refreshUsage">
+            <span><i></i> Hạn mức còn lại</span><strong>{{ remainingLabel }}</strong>
+          </button>
+          <button class="sidebar-settings" :class="{ active: activeTab === 'settings' }" @click="activeTab = 'settings'">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M4.9 4.9 7 7M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1 7 17M17 7l2.1-2.1" /></svg><span>Cài đặt</span>
+          </button>
+        </div>
+      </aside>
       <header class="app-header">
         <button class="icon-button" aria-label="Tạo cuộc trò chuyện mới" @click="createConversation">
           <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>
@@ -384,7 +422,8 @@ onBeforeUnmount(() => controller.value?.abort())
       <main v-if="activeTab === 'chat'" class="chat-page">
         <div ref="messageScroller" class="messages">
           <div v-if="!activeConversation?.messages.length" class="empty-chat">
-            <div class="orb"><span>G</span></div>
+          <div class="orb"><span>G</span></div>
+          <span class="empty-kicker">GROK 4.6</span>
             <h2>Hôm nay bạn muốn làm gì?</h2>
             <p>Hỏi bất cứ điều gì, gửi ảnh để phân tích hoặc tạo một hình ảnh mới.</p>
             <div class="suggestion-grid">
@@ -443,7 +482,9 @@ onBeforeUnmount(() => controller.value?.abort())
               :placeholder="composerMode === 'image' ? 'Mô tả hình ảnh bạn muốn tạo…' : 'Nhắn tin cho Grok…'"
               @keydown.enter.exact.prevent="sendMessage"
             ></textarea>
-            <button class="spark-button" :class="{ active: composerMode === 'image' }" aria-label="Đổi chế độ tạo ảnh" @click="switchComposerMode">✦</button>
+            <button class="spark-button" :class="{ active: composerMode === 'image' }" aria-label="Đổi chế độ tạo ảnh" :aria-pressed="composerMode === 'image'" @click="switchComposerMode">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 1.5 5.5L19 10l-5.5 1.5L12 17l-1.5-5.5L5 10l5.5-1.5z" /></svg>
+            </button>
             <button v-if="busy" class="send-button stop" aria-label="Dừng" @click="stopResponse"><span></span></button>
             <button v-else class="send-button" :disabled="!canSend" aria-label="Gửi" @click="sendMessage">
               <svg viewBox="0 0 24 24"><path d="m5 12 7-7 7 7M12 19V5" /></svg>
@@ -455,7 +496,7 @@ onBeforeUnmount(() => controller.value?.abort())
 
       <main v-else-if="activeTab === 'imagine'" class="imagine-page scroll-page">
         <section class="imagine-hero">
-          <span class="imagine-spark">✦</span>
+          <span class="imagine-spark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m12 3 1.5 5.5L19 10l-5.5 1.5L12 17l-1.5-5.5L5 10l5.5-1.5z" /></svg></span>
           <p class="eyebrow">GROK IMAGINE</p>
           <h1>Biến ý tưởng thành hình ảnh</h1>
           <p>Mô tả điều bạn hình dung. Grok sẽ tạo ảnh ngay trong vài giây.</p>
@@ -482,7 +523,7 @@ onBeforeUnmount(() => controller.value?.abort())
           <p v-if="imagineError" class="form-error">{{ imagineError }}</p>
           <button class="imagine-button" :disabled="busy || !imaginePrompt.trim()" @click="generateFromImagine">
             <span v-if="busy" class="spinner"></span>
-            {{ busy ? 'Đang sáng tạo…' : '✦ Tạo hình ảnh' }}
+            {{ busy ? 'Đang sáng tạo…' : 'Tạo hình ảnh' }}
           </button>
         </section>
         <section v-if="gallery.length" class="gallery-section">
@@ -589,4 +630,132 @@ button { -webkit-tap-highlight-color: transparent; }
 .bottom-nav { display: grid; grid-template-columns: repeat(4,1fr); padding: 6px 8px max(6px,env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: rgba(12,14,18,.94); backdrop-filter: blur(18px); z-index: 8; }.bottom-nav button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; color: #717681; border: 0; background: transparent; font-size: 9px; }.bottom-nav button.active { color: #fff; }.bottom-nav svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }.hidden-input { position: fixed; left: -9999px; opacity: 0; }
 @media (min-width: 761px) { .grok-mobile { padding: 16px; background: radial-gradient(circle at top,#202530,#090b0f 45%); }.app-shell { height: calc(100dvh - 32px); border-radius: 24px; overflow: hidden; box-shadow: 0 24px 90px rgba(0,0,0,.5); }.composer-wrap { padding-inline: 28px; }.messages { padding-inline: 30px; } }
 @media (max-width: 390px) { .model-chip small { display: none; }.balance-pill { padding-inline: 7px; }.suggestion-grid { grid-template-columns: 1fr; }.usage-card { grid-template-columns: 1fr 1fr; }.usage-card button { grid-column: 1/-1; }.composer { grid-template-columns: 34px minmax(0,1fr) 32px 36px; padding: 6px 5px; } }
+
+/* Grok Workspace 2.0 — responsive product shell */
+.grok-mobile {
+  --violet: #8b5cf6;
+  --violet-bright: #a78bfa;
+  --indigo: #6366f1;
+  --surface-0: #08090d;
+  --surface-1: #0e1016;
+  --surface-2: #151821;
+  --surface-3: #1c202b;
+  --text-1: #f7f7fb;
+  --text-2: #b6bac6;
+  --text-3: #7d8393;
+  --line: rgba(255,255,255,.085);
+  --focus: 0 0 0 3px rgba(139,92,246,.32);
+  background: var(--surface-0);
+}
+.desktop-sidebar { display: none; }
+button, select, a { cursor: pointer; }
+button { transition: color .18s ease, background-color .18s ease, border-color .18s ease, opacity .18s ease, box-shadow .18s ease; }
+button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible { outline: none; box-shadow: var(--focus); }
+.connect-screen { background: radial-gradient(circle at 16% 12%,rgba(99,102,241,.2),transparent 34%),radial-gradient(circle at 84% 84%,rgba(139,92,246,.15),transparent 36%),#08090d; }
+.connect-card { border-color: rgba(255,255,255,.12); background: rgba(15,17,24,.82); box-shadow: 0 32px 100px rgba(0,0,0,.58); }
+.brand-mark, .orb { background: linear-gradient(145deg,#a78bfa,#6366f1); }
+.brand-mark { color: white; transform: none; border-radius: 17px; }
+.primary-button { color: white; background: linear-gradient(135deg,var(--violet),var(--indigo)); box-shadow: 0 10px 30px rgba(99,102,241,.22); }
+.primary-button:hover:not(:disabled) { background: linear-gradient(135deg,#9d75f7,#7477f4); }
+.app-shell { max-width: none; background: var(--surface-0); border: 0; }
+.app-header { height: 64px; padding-inline: 16px; background: rgba(8,9,13,.82); }
+.icon-button { width: 44px; height: 44px; border-radius: 14px; background: var(--surface-2); }
+.model-chip { min-height: 44px; border-radius: 14px; }
+.model-chip:hover { background: rgba(255,255,255,.055); }
+.model-dot { background: #34d399; box-shadow: 0 0 12px rgba(52,211,153,.7); }
+.balance-pill { min-height: 44px; padding-inline: 12px; border-radius: 14px; background: var(--surface-2); }
+.chat-page, .imagine-page, .history-page, .settings-page { background: radial-gradient(circle at 50% -18%,rgba(99,102,241,.075),transparent 40%),var(--surface-0); }
+.messages { padding: 20px 16px 190px; }
+.empty-chat { justify-content: center; max-width: 720px; margin: auto; }
+.orb { width: 72px; height: 72px; box-shadow: 0 0 72px rgba(139,92,246,.26); }
+.orb span { color: white; background: rgba(9,10,15,.82); }
+.empty-kicker { margin: 0 0 10px; color: var(--violet-bright); font-size: 11px; font-weight: 800; letter-spacing: .16em; }
+.empty-chat h2 { font-size: clamp(28px,7vw,44px); font-weight: 720; letter-spacing: -.045em; }
+.empty-chat > p { color: var(--text-2); }
+.suggestion-grid { gap: 10px; width: min(100%,560px); }
+.suggestion-grid button { position: relative; min-height: 76px; padding: 16px; color: var(--text-2); border-radius: 18px; background: rgba(21,24,33,.72); line-height: 1.4; }
+.suggestion-grid button:hover { color: white; border-color: rgba(167,139,250,.42); background: rgba(30,32,46,.9); }
+.message-row { max-width: 780px; margin-bottom: 28px; }
+.assistant-avatar, .history-icon { color: white; background: linear-gradient(145deg,var(--violet),var(--indigo)); }
+.message-user .message-content { padding: 12px 16px; border: 1px solid rgba(255,255,255,.06); background: var(--surface-3); }
+.markdown-body { color: var(--text-1); font-size: 15px; }
+.composer-wrap { padding: 22px 12px 10px; background: linear-gradient(transparent,rgba(8,9,13,.96) 28%,var(--surface-0) 56%); }
+.composer { max-width: 820px; margin: 0 auto; min-height: 58px; padding: 9px; border-color: rgba(255,255,255,.13); border-radius: 24px; background: rgba(25,28,38,.96); box-shadow: 0 18px 60px rgba(0,0,0,.48); }
+.composer:focus-within { border-color: rgba(167,139,250,.5); box-shadow: 0 18px 60px rgba(0,0,0,.48),0 0 0 3px rgba(139,92,246,.12); }
+.composer-action,.spark-button,.send-button { width: 40px; height: 40px; }
+.spark-button svg { width: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+.spark-button.active { color: white; background: linear-gradient(145deg,var(--violet),var(--indigo)); }
+.send-button { color: white; background: linear-gradient(145deg,var(--violet),var(--indigo)); }
+.send-button:disabled { color: #6e7380; background: #292d37; }
+.composer-note { color: var(--text-3); font-size: 10px; }
+.mode-banner { max-width: 820px; margin-inline: auto; color: #ddd6fe; border-color: rgba(139,92,246,.28); background: rgba(109,40,217,.14); }
+.attachment-strip { max-width: 820px; margin-inline: auto; }
+.scroll-page { padding: 32px 18px 72px; }
+.imagine-page { background: radial-gradient(circle at 50% 0,rgba(124,58,237,.2),transparent 38%),var(--surface-0); }
+.imagine-spark { display: grid; place-items: center; width: 56px; height: 56px; margin: 0 auto 16px; border: 1px solid rgba(167,139,250,.25); border-radius: 18px; background: rgba(109,40,217,.16); }
+.imagine-spark svg { width: 28px; fill: none; stroke: #c4b5fd; stroke-width: 1.6; }
+.imagine-card,.settings-card,.usage-card { border-radius: 24px; background: rgba(21,24,33,.82); box-shadow: 0 18px 50px rgba(0,0,0,.16); }
+.imagine-card textarea,.option-row select { border-color: rgba(255,255,255,.1); background: rgba(8,9,13,.72); }
+.imagine-button { color: white; background: linear-gradient(135deg,var(--violet),var(--indigo)); }
+.gallery-grid { gap: 12px; }
+.gallery-grid figure { border-radius: 20px; }
+.new-chat-card,.history-list article { min-height: 64px; border-radius: 18px; background: rgba(21,24,33,.82); }
+.new-chat-card:hover,.history-list article:hover { border-color: rgba(167,139,250,.28); background: var(--surface-3); }
+.usage-card { background: linear-gradient(135deg,rgba(109,40,217,.25),rgba(30,33,46,.92)); }
+.reasoning-option { min-height: 64px; cursor: pointer; }
+.reasoning-option:hover { background: rgba(255,255,255,.025); }
+.reasoning-option em { color: white; background: linear-gradient(145deg,var(--violet),var(--indigo)); }
+.bottom-nav { min-height: 70px; padding-top: 8px; background: rgba(10,11,16,.94); }
+.bottom-nav button { min-width: 48px; min-height: 48px; border-radius: 14px; font-size: 10px; }
+.bottom-nav button.active { color: #c4b5fd; background: rgba(139,92,246,.1); }
+
+@media (min-width: 900px) {
+  .grok-mobile { padding: 0; background: var(--surface-0); }
+  .app-shell { height: 100dvh; display: grid; grid-template-columns: 272px minmax(0,1fr); grid-template-rows: 64px minmax(0,1fr); grid-template-areas: "sidebar header" "sidebar main"; border-radius: 0; box-shadow: none; }
+  .desktop-sidebar { grid-area: sidebar; display: flex; flex-direction: column; min-width: 0; padding: 20px 14px 16px; border-right: 1px solid var(--line); background: #0c0e14; }
+  .sidebar-brand { display: flex; align-items: center; gap: 12px; padding: 0 8px 20px; }
+  .brand-glyph { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 13px; color: white; background: linear-gradient(145deg,var(--violet),var(--indigo)); font-size: 19px; font-weight: 900; box-shadow: 0 9px 26px rgba(99,102,241,.28); }
+  .sidebar-brand strong,.sidebar-brand small { display: block; }.sidebar-brand strong { font-size: 18px; }.sidebar-brand small { margin-top: 2px; color: var(--text-3); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; }
+  .sidebar-new { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 46px; padding: 0 14px; color: white; border: 1px solid rgba(167,139,250,.22); border-radius: 14px; background: linear-gradient(135deg,rgba(124,58,237,.24),rgba(79,70,229,.17)); font-weight: 700; }
+  .sidebar-new:hover { border-color: rgba(167,139,250,.52); background: linear-gradient(135deg,rgba(124,58,237,.34),rgba(79,70,229,.24)); }
+  .sidebar-new svg,.sidebar-nav svg,.sidebar-settings svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .sidebar-nav { display: grid; gap: 4px; margin-top: 16px; }
+  .sidebar-nav button,.sidebar-settings { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 44px; padding: 0 13px; color: var(--text-2); border: 0; border-radius: 12px; background: transparent; text-align: left; }
+  .sidebar-nav button:hover,.sidebar-settings:hover,.sidebar-nav button.active,.sidebar-settings.active { color: white; background: rgba(255,255,255,.06); }
+  .sidebar-nav button.active { color: #ddd6fe; background: rgba(139,92,246,.13); }
+  .sidebar-recents { min-height: 0; flex: 1; margin-top: 24px; overflow: hidden; }
+  .sidebar-recents > p { margin: 0 12px 8px; color: var(--text-3); font-size: 10px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+  .sidebar-recents button { display: block; width: 100%; padding: 10px 12px; overflow: hidden; color: #969ba8; border: 0; border-radius: 10px; background: transparent; text-align: left; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+  .sidebar-recents button:hover,.sidebar-recents button.active { color: white; background: rgba(255,255,255,.045); }
+  .sidebar-footer { display: grid; gap: 8px; padding-top: 12px; border-top: 1px solid var(--line); }
+  .sidebar-usage { display: grid; gap: 5px; padding: 12px; color: var(--text-2); border: 1px solid var(--line); border-radius: 14px; background: var(--surface-2); text-align: left; }
+  .sidebar-usage span { font-size: 10px; }.sidebar-usage i { display: inline-block; width: 6px; height: 6px; margin-right: 5px; border-radius: 50%; background: #34d399; }.sidebar-usage strong { color: white; font-size: 16px; }
+  .app-header { grid-area: header; grid-template-columns: 1fr auto; padding-inline: 28px; }
+  .app-header .icon-button { display: none; }
+  .model-chip { justify-self: start; }
+  .balance-pill { display: none; }
+  .chat-page,.scroll-page { grid-area: main; }
+  .bottom-nav { display: none; }
+  .messages { padding: 32px clamp(28px,6vw,96px) 190px; }
+  .composer-wrap { padding-inline: clamp(28px,6vw,96px); }
+  .scroll-page { padding: 48px clamp(32px,6vw,88px) 80px; }
+  .imagine-card,.gallery-section,.page-title,.new-chat-card,.history-list article,.usage-card,.settings-card { max-width: 780px; }
+  .gallery-grid { grid-template-columns: repeat(3,1fr); }
+}
+
+@media (min-width: 1300px) {
+  .app-shell { grid-template-columns: 292px minmax(0,1fr); }
+  .message-row,.composer,.mode-banner,.attachment-strip { max-width: 900px; }
+  .suggestion-grid { grid-template-columns: repeat(2,1fr); }
+}
+
+@media (max-width: 899px) and (orientation: landscape) {
+  .empty-chat { justify-content: flex-start; }
+  .orb { width: 54px; height: 54px; margin-bottom: 10px; }
+  .suggestion-grid { grid-template-columns: repeat(2,1fr); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,*::before,*::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}
 </style>
