@@ -127,23 +127,40 @@ export async function generateImage(input: {
   size: '1024x1024' | '1024x1536' | '1536x1024'
   signal?: AbortSignal
 }): Promise<ImageGenerationResult> {
-  const response = await fetch(`${API_ROOT}/images/generations`, {
-    method: 'POST',
-    headers: authHeaders(input.apiKey),
-    signal: input.signal,
-    body: JSON.stringify({
-      model: input.model,
-      prompt: input.prompt,
-      n: 1,
-      size: input.size,
-      response_format: 'b64_json',
-    }),
-  })
-  if (!response.ok) throw await errorFromResponse(response)
+  const models = input.model === 'grok-imagine-image-quality'
+    ? ['grok-imagine-image-quality', 'grok-imagine-image'] as const
+    : [input.model] as const
+  let lastError: GrokAPIError | null = null
 
-  const payload = await response.json()
-  const image = payload?.data?.[0]
-  const url = image?.url || (image?.b64_json ? `data:image/png;base64,${image.b64_json}` : '')
-  if (!url) throw new GrokAPIError('API không trả về dữ liệu ảnh.')
-  return { url, revisedPrompt: image?.revised_prompt }
+  for (const model of models) {
+    const response = await fetch(`${API_ROOT}/images/generations`, {
+      method: 'POST',
+      headers: authHeaders(input.apiKey),
+      signal: input.signal,
+      // xAI's native image endpoint accepts model + prompt. The gateway strips
+      // unsupported sizing fields, so keep this payload minimal and portable.
+      body: JSON.stringify({ model, prompt: input.prompt }),
+    })
+    if (!response.ok) {
+      lastError = await errorFromResponse(response)
+      if (model === 'grok-imagine-image-quality' && [400, 404, 422].includes(response.status)) continue
+      throw lastError
+    }
+
+    const payload = await response.json()
+    const image = payload?.data?.[0] || payload?.images?.[0] || payload?.output?.[0] || payload?.image
+    const raw = typeof image === 'string'
+      ? image
+      : image?.url || image?.image_url || image?.b64_json || image?.base64 || image?.result
+    if (typeof raw === 'string' && raw.trim()) {
+      const value = raw.trim()
+      const url = /^(?:https?:|data:|blob:)/i.test(value)
+        ? value
+        : `data:image/png;base64,${value}`
+      return { url, revisedPrompt: image?.revised_prompt || payload?.revised_prompt }
+    }
+    lastError = new GrokAPIError('API không trả về dữ liệu ảnh.')
+  }
+
+  throw lastError || new GrokAPIError('Không thể tạo ảnh bằng model hiện tại.')
 }

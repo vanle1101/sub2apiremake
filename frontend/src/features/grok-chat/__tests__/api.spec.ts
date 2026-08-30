@@ -25,7 +25,7 @@ describe('grok chat api', () => {
   })
 
   it('normalizes base64 image generation responses into a data URL', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
       data: [{ b64_json: 'aW1hZ2U=' }],
     }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
 
@@ -36,6 +36,32 @@ describe('grok chat api', () => {
       size: '1024x1024',
     })
     expect(result.url).toBe('data:image/png;base64,aW1hZ2U=')
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      model: 'grok-imagine-image',
+      prompt: 'mèo phi hành gia',
+    })
+  })
+
+  it('falls back to the fast model and accepts alternate image payloads', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: { message: 'model unavailable' } }), {
+        status: 422,
+        headers: { 'Content-Type': 'application/json' },
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        images: [{ image_url: 'https://images.example/generated.png' }],
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+
+    const result = await generateImage({
+      apiKey: 'sk-customer',
+      prompt: 'phong cảnh Việt Nam',
+      model: 'grok-imagine-image-quality',
+      size: '1536x1024',
+    })
+
+    expect(result.url).toBe('https://images.example/generated.png')
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body)).model).toBe('grok-imagine-image')
   })
 
   it('returns a clear error for rejected keys', async () => {
