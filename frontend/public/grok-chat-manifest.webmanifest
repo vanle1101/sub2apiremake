@@ -1,0 +1,20 @@
+{
+  "name": "Grok Mobile",
+  "short_name": "Grok",
+  "description": "Chat, đọc ảnh và sáng tạo hình ảnh với Grok 4.6",
+  "start_url": "/chat",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#090b0f",
+  "theme_color": "#090b0f",
+  "lang": "vi",
+  "icons": [
+    {
+      "src": "/logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
