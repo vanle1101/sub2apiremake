@@ -469,17 +469,12 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 }
 
 func (h *OpenAIGatewayHandler) ensureGrokMediaAccountEligibility(ctx context.Context, account *service.Account) (bool, string, error) {
+	_ = ctx
 	if account == nil {
 		return false, "missing_account", errors.New("grok media account is required")
 	}
-	eligible, reason := account.GrokMediaGenerationEligibility()
-	if eligible || reason != "billing_unobserved" {
-		return eligible, reason, nil
-	}
-	if h == nil || h.grokMediaEligibilityProber == nil {
-		return false, "billing_probe_unavailable", errors.New("grok media eligibility probe is not configured")
-	}
-	return h.grokMediaEligibilityProber.ProbeMediaEligibility(ctx, account.ID)
+	eligible, reason := account.GrokMediaSchedulingEligibility()
+	return eligible, reason, nil
 }
 
 func grokMediaRequiredCapability(endpoint service.GrokMediaEndpoint) service.OpenAIEndpointCapability {

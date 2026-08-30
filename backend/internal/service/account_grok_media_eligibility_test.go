@@ -65,11 +65,11 @@ func TestGrokMediaGenerationEligibility(t *testing.T) {
 	}
 }
 
-func TestGrokMediaCapabilityKeepsOnlyUnobservedOAuthAsProbeCandidate(t *testing.T) {
+func TestGrokMediaCapabilityUsesUpstreamAsAuthority(t *testing.T) {
 	unobserved := &Account{Platform: PlatformGrok, Type: AccountTypeOAuth}
-	eligible, reason := unobserved.GrokMediaGenerationEligibility()
-	require.False(t, eligible)
-	require.Equal(t, "billing_unobserved", reason)
+	eligible, reason := unobserved.GrokMediaSchedulingEligibility()
+	require.True(t, eligible)
+	require.Equal(t, "upstream_capability_check", reason)
 	require.True(t, unobserved.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityGrokMediaGeneration))
 
 	inconclusive := &Account{
@@ -80,7 +80,17 @@ func TestGrokMediaCapabilityKeepsOnlyUnobservedOAuthAsProbeCandidate(t *testing.
 			Partial:    true,
 		}},
 	}
-	require.False(t, inconclusive.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityGrokMediaGeneration))
+	require.True(t, inconclusive.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityGrokMediaGeneration))
+
+	forbidden := &Account{Platform: PlatformGrok, Type: AccountTypeOAuth, Extra: map[string]any{
+		grokBillingExtraKey: &xai.BillingSummary{StatusCode: http.StatusForbidden},
+	}}
+	require.True(t, forbidden.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityGrokMediaGeneration))
+
+	disabled := &Account{Platform: PlatformGrok, Type: AccountTypeOAuth, Extra: map[string]any{
+		GrokMediaEligibleExtraKey: false,
+	}}
+	require.False(t, disabled.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityGrokMediaGeneration))
 }
 
 func TestGrokMediaCapabilityFiltersOnlyGeneration(t *testing.T) {

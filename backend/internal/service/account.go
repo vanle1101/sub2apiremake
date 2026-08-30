@@ -1475,12 +1475,8 @@ func (a *Account) SupportsOpenAIEndpointCapability(capability OpenAIEndpointCapa
 		case OpenAIEndpointCapabilityChatCompletions:
 			return true
 		case OpenAIEndpointCapabilityGrokMediaGeneration:
-			eligible, reason := a.GrokMediaGenerationEligibility()
-			// Unobserved OAuth accounts remain scheduler candidates only so the
-			// request path can run the billing probe before forwarding. The
-			// forwarding gate itself fails closed if that probe is unavailable or
-			// cannot produce positive paid-entitlement evidence.
-			return eligible || reason == "billing_unobserved"
+			eligible, _ := a.GrokMediaSchedulingEligibility()
+			return eligible
 		default:
 			return false
 		}
@@ -1527,6 +1523,25 @@ func (a *Account) SupportsOpenAIEndpointCapability(capability OpenAIEndpointCapa
 		return true
 	}
 	return configured[string(capability)]
+}
+
+// GrokMediaSchedulingEligibility decides whether an account may be tried for
+// an Imagine request. Billing endpoints are not an authoritative media
+// capability signal: some OAuth accounts can generate images even when the
+// billing snapshot is empty, unavailable, or reports a free tier. Let the
+// actual media endpoint determine capability and fail over on an upstream
+// rejection. An explicit operator override still takes precedence.
+func (a *Account) GrokMediaSchedulingEligibility() (bool, string) {
+	if a == nil || !a.IsGrok() {
+		return false, "not_grok"
+	}
+	if override, ok := grokMediaEligibilityOverride(a.Extra); ok {
+		if override {
+			return true, "override_enabled"
+		}
+		return false, "override_disabled"
+	}
+	return true, "upstream_capability_check"
 }
 
 // GrokMediaGenerationEligibility reports whether a Grok account may receive
