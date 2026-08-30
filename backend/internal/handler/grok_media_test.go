@@ -2,7 +2,6 @@ package handler
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"testing"
 
@@ -127,7 +126,7 @@ func TestGrokMediaScheduleModelUsesNormalizedMappedUpstream(t *testing.T) {
 }
 
 func TestEnsureGrokMediaAccountEligibility(t *testing.T) {
-	t.Run("non oauth account does not probe", func(t *testing.T) {
+	t.Run("api key account is scheduled for upstream capability check", func(t *testing.T) {
 		prober := &grokMediaEligibilityProberStub{}
 		h := &OpenAIGatewayHandler{grokMediaEligibilityProber: prober}
 		account := &service.Account{Platform: service.PlatformGrok, Type: service.AccountTypeAPIKey}
@@ -136,11 +135,11 @@ func TestEnsureGrokMediaAccountEligibility(t *testing.T) {
 
 		require.NoError(t, err)
 		require.True(t, eligible)
-		require.Equal(t, "non_oauth", reason)
+		require.Equal(t, "upstream_capability_check", reason)
 		require.Zero(t, prober.calls)
 	})
 
-	t.Run("unobserved oauth is probed before forwarding", func(t *testing.T) {
+	t.Run("unobserved oauth reaches media endpoint without billing probe", func(t *testing.T) {
 		prober := &grokMediaEligibilityProberStub{eligible: true, reason: "eligible"}
 		h := &OpenAIGatewayHandler{grokMediaEligibilityProber: prober}
 		account := &service.Account{ID: 7, Platform: service.PlatformGrok, Type: service.AccountTypeOAuth}
@@ -149,31 +148,31 @@ func TestEnsureGrokMediaAccountEligibility(t *testing.T) {
 
 		require.NoError(t, err)
 		require.True(t, eligible)
-		require.Equal(t, "eligible", reason)
-		require.Equal(t, 1, prober.calls)
+		require.Equal(t, "upstream_capability_check", reason)
+		require.Zero(t, prober.calls)
 	})
 
-	t.Run("missing prober fails closed", func(t *testing.T) {
+	t.Run("missing prober does not block media", func(t *testing.T) {
 		h := &OpenAIGatewayHandler{}
 		account := &service.Account{ID: 8, Platform: service.PlatformGrok, Type: service.AccountTypeOAuth}
 
 		eligible, reason, err := h.ensureGrokMediaAccountEligibility(context.Background(), account)
 
-		require.Error(t, err)
-		require.False(t, eligible)
-		require.Equal(t, "billing_probe_unavailable", reason)
+		require.NoError(t, err)
+		require.True(t, eligible)
+		require.Equal(t, "upstream_capability_check", reason)
 	})
 
-	t.Run("probe failure fails closed", func(t *testing.T) {
-		probeErr := errors.New("probe failed")
-		prober := &grokMediaEligibilityProberStub{reason: "billing_unobserved", err: probeErr}
+	t.Run("explicit media disable remains enforced", func(t *testing.T) {
+		prober := &grokMediaEligibilityProberStub{}
 		h := &OpenAIGatewayHandler{grokMediaEligibilityProber: prober}
-		account := &service.Account{ID: 9, Platform: service.PlatformGrok, Type: service.AccountTypeOAuth}
+		account := &service.Account{ID: 9, Platform: service.PlatformGrok, Type: service.AccountTypeOAuth, Extra: map[string]any{service.GrokMediaEligibleExtraKey: false}}
 
 		eligible, reason, err := h.ensureGrokMediaAccountEligibility(context.Background(), account)
 
-		require.ErrorIs(t, err, probeErr)
+		require.NoError(t, err)
 		require.False(t, eligible)
-		require.Equal(t, "billing_unobserved", reason)
+		require.Equal(t, "override_disabled", reason)
+		require.Zero(t, prober.calls)
 	})
 }
