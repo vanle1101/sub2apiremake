@@ -115,7 +115,13 @@ const usedTokensLabel = computed(() => {
   return compactNumber(tokens)
 })
 
-const canSend = computed(() => !busy.value && (!!prompt.value.trim() || attachments.value.length > 0))
+const canSend = computed(() => {
+  if (busy.value) return false
+  // An uploaded image without an instruction is valid for chat analysis, but
+  // image edit mode must always state the exact change to apply.
+  if (composerMode.value === 'image') return !!prompt.value.trim()
+  return !!prompt.value.trim() || attachments.value.length > 0
+})
 
 function compactNumber(value: number): string {
   return new Intl.NumberFormat('vi-VN', { notation: 'compact', maximumFractionDigits: 1 }).format(value)
@@ -190,7 +196,8 @@ function disconnect() {
 
 async function handleFiles(event: Event) {
   const input = event.target as HTMLInputElement
-  const files = Array.from(input.files || []).slice(0, Math.max(0, 4 - attachments.value.length))
+  const limit = composerMode.value === 'image' ? 1 : 4
+  const files = Array.from(input.files || []).slice(0, Math.max(0, limit - attachments.value.length))
   input.value = ''
   for (const file of files) {
     try {
@@ -242,14 +249,23 @@ async function sendMessage() {
   controller.value = new AbortController()
   try {
     if (composerMode.value === 'image') {
-      const result = await generateImage({
-        apiKey: apiKey.value,
-        prompt: text || 'Tạo một hình ảnh đẹp dựa trên nội dung đã gửi.',
-        model: imagineModel.value,
-        size: imagineSize.value,
-        signal: controller.value.signal,
-      })
-      assistantMessage.text = result.revisedPrompt || 'Ảnh đã được tạo.'
+      const sourceImage = userMessage.attachments?.[0]?.dataUrl
+      const result = sourceImage
+        ? await editImage({
+            apiKey: apiKey.value,
+            sourceImage,
+            prompt: text,
+            model: imagineModel.value,
+            signal: controller.value.signal,
+          })
+        : await generateImage({
+            apiKey: apiKey.value,
+            prompt: text,
+            model: imagineModel.value,
+            size: imagineSize.value,
+            signal: controller.value.signal,
+          })
+      assistantMessage.text = result.revisedPrompt || (sourceImage ? 'Ảnh gốc đã được chỉnh sửa đúng theo yêu cầu.' : 'Ảnh đã được tạo.')
       assistantMessage.generatedImages = [result.url]
       addToGallery(result.url)
     } else {
@@ -351,7 +367,6 @@ async function submitImageEdit() {
       sourceImage: selectedImage.value,
       prompt: instruction,
       model: imagineModel.value,
-      size: imagineSize.value,
       signal: imageEditorController.value.signal,
     })
     addToGallery(result.url)
@@ -643,7 +658,9 @@ onBeforeUnmount(() => {
             <div v-if="message.role === 'assistant'" class="assistant-avatar"><GrokLogo /></div>
             <div class="message-content">
               <div v-if="message.attachments?.length" class="message-attachments">
-                <img v-for="image in message.attachments" :key="image.id" :src="image.dataUrl" :alt="image.name" />
+                <button v-for="image in message.attachments" :key="image.id" class="message-attachment-open" aria-label="Mở ảnh tải lên để chỉnh sửa" @click="openImageEditor(image.dataUrl)">
+                  <img :src="image.dataUrl" :alt="image.name" />
+                </button>
               </div>
               <div v-if="message.pending && !message.text" class="thinking-indicator">
                 <span></span><span></span><span></span>
@@ -673,7 +690,7 @@ onBeforeUnmount(() => {
           <div v-if="composerMode === 'image'" class="mode-banner" aria-label="Tùy chọn tạo ảnh">
             <span class="mode-title">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 1.5 5.5L19 10l-5.5 1.5L12 17l-1.5-5.5L5 10l5.5-1.5z" /></svg>
-              Tạo ảnh
+              {{ attachments.length ? 'Chỉnh ảnh gốc' : 'Tạo ảnh' }}
             </span>
             <div class="image-quick-options">
               <label>
@@ -685,7 +702,8 @@ onBeforeUnmount(() => {
               </label>
               <label>
                 <span>Tỷ lệ</span>
-                <select v-model="imagineSize" aria-label="Tỷ lệ ảnh">
+                <select v-if="attachments.length" disabled aria-label="Tỷ lệ ảnh chỉnh sửa"><option>Giữ nguyên ảnh gốc</option></select>
+                <select v-else v-model="imagineSize" aria-label="Tỷ lệ ảnh">
                   <option value="1024x1024">1:1</option>
                   <option value="1024x1536">2:3</option>
                   <option value="1536x1024">3:2</option>
@@ -698,7 +716,7 @@ onBeforeUnmount(() => {
             <textarea
               v-model="prompt"
               rows="1"
-              :placeholder="composerMode === 'image' ? 'Mô tả hình ảnh bạn muốn tạo…' : 'Làm với bất kỳ nội dung nào'"
+              :placeholder="composerMode === 'image' ? (attachments.length ? 'Mô tả chính xác phần cần thay đổi…' : 'Mô tả hình ảnh bạn muốn tạo…') : 'Làm với bất kỳ nội dung nào'"
               @keydown.enter.exact.prevent="sendMessage"
             ></textarea>
             <div class="composer-toolbar">
@@ -902,7 +920,7 @@ onBeforeUnmount(() => {
               </label>
               <div class="image-editor-options">
                 <label><span>Chất lượng</span><select v-model="imagineModel" :disabled="imageEditorBusy"><option value="grok-imagine-image">Nhanh</option><option value="grok-imagine-image-quality">Chi tiết</option></select></label>
-                <label><span>Tỷ lệ ảnh mới</span><select v-model="imagineSize" :disabled="imageEditorBusy"><option value="1024x1024">Vuông 1:1</option><option value="1024x1536">Dọc 2:3</option><option value="1536x1024">Ngang 3:2</option></select></label>
+                <label><span>Khung ảnh</span><select disabled><option>Giữ nguyên ảnh gốc</option></select></label>
               </div>
               <p v-if="imageEditError" class="image-editor-error" role="alert">{{ imageEditError }}</p>
               <div class="image-editor-actions">
@@ -943,7 +961,7 @@ button { -webkit-tap-highlight-color: transparent; }
 .model-chip { justify-self: center; display: flex; align-items: center; gap: 7px; min-width: 0; padding: 7px 10px; color: #f5f5f6; border: 0; background: transparent; font-weight: 750; }.model-chip small { color: #8c9099; font-size: 10px; font-weight: 600; }.model-dot { width: 7px; height: 7px; border-radius: 50%; background: #56da83; box-shadow: 0 0 9px #56da83; }
 .balance-pill { display: flex; flex-direction: column; align-items: flex-end; padding: 5px 9px; color: #fff; border: 1px solid var(--line); border-radius: 12px; background: #14171c; }.balance-pill span { font-size: 12px; font-weight: 800; }.balance-pill small { color: #858a94; font-size: 9px; }
 .chat-page { position: relative; min-height: 0; overflow: hidden; }.messages { height: 100%; overflow-y: auto; padding: 18px 14px 190px; scroll-behavior: smooth; }.empty-chat { min-height: calc(100% - 30px); display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 28px 4px; }.orb { display: grid; place-items: center; width: 68px; height: 68px; margin-bottom: 20px; border-radius: 50%; background: conic-gradient(from 180deg,#fff,#646b78,#fff); padding: 2px; box-shadow: 0 0 60px rgba(180,195,255,.16); }.orb span { display: grid; place-items: center; width: 100%; height: 100%; border-radius: inherit; background: #11141a; font-size: 27px; font-weight: 900; }.empty-chat h2 { margin: 0; font-size: clamp(24px,6vw,34px); letter-spacing: -.035em; }.empty-chat > p { max-width: 420px; margin: 10px 0 24px; color: var(--muted); line-height: 1.55; }.suggestion-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; width: min(100%, 480px); }.suggestion-grid button { min-height: 66px; padding: 12px; color: #d9dbe0; border: 1px solid var(--line); border-radius: 16px; background: #12151a; text-align: left; font-size: 13px; }
-.message-row { display: flex; gap: 10px; margin: 0 auto 22px; max-width: 680px; }.message-user { justify-content: flex-end; }.assistant-avatar { flex: 0 0 28px; width: 28px; height: 28px; margin-top: 2px; border-radius: 9px; font-size: 13px; }.message-content { min-width: 0; max-width: min(88%,620px); }.message-user .message-content { padding: 11px 14px; border-radius: 18px 18px 5px 18px; background: #272b33; }.message-error .message-content { color: #ffaaaa; }.user-text { margin: 0; white-space: pre-wrap; line-height: 1.52; }.markdown-body { color: #eff0f2; line-height: 1.64; overflow-wrap: anywhere; }.markdown-body :deep(p) { margin: 0 0 12px; }.markdown-body :deep(p:last-child) { margin-bottom: 0; }.markdown-body :deep(pre) { overflow-x: auto; padding: 13px; border: 1px solid var(--line); border-radius: 12px; background: #111318; }.markdown-body :deep(code) { font-family: "SFMono-Regular",Consolas,monospace; font-size: .9em; }.markdown-body :deep(a) { color: #9dc1ff; }.message-attachments { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 6px; margin-bottom: 9px; }.message-attachments img { width: 100%; max-height: 240px; object-fit: cover; border-radius: 13px; }.generated-images { display: grid; gap: 10px; margin-top: 12px; }.generated-images figure { position: relative; margin: 0; }.generated-images img { display: block; width: 100%; border-radius: 18px; }.generated-images button, .gallery-grid button { position: absolute; right: 9px; bottom: 9px; padding: 8px 11px; color: #fff; border: 1px solid rgba(255,255,255,.2); border-radius: 10px; background: rgba(0,0,0,.65); backdrop-filter: blur(8px); }.thinking-indicator { display: flex; align-items: center; gap: 4px; min-height: 30px; color: #999da6; }.thinking-indicator span { width: 5px; height: 5px; border-radius: 50%; background: #c6c8ce; animation: pulse 1.2s infinite; }.thinking-indicator span:nth-child(2){animation-delay:.15s}.thinking-indicator span:nth-child(3){animation-delay:.3s}.thinking-indicator em { margin-left: 6px; font-size: 12px; font-style: normal; }@keyframes pulse { 0%,70%,100%{opacity:.25;transform:translateY(0)}35%{opacity:1;transform:translateY(-3px)} }
+.message-row { display: flex; gap: 10px; margin: 0 auto 22px; max-width: 680px; }.message-user { justify-content: flex-end; }.assistant-avatar { flex: 0 0 28px; width: 28px; height: 28px; margin-top: 2px; border-radius: 9px; font-size: 13px; }.message-content { min-width: 0; max-width: min(88%,620px); }.message-user .message-content { padding: 11px 14px; border-radius: 18px 18px 5px 18px; background: #272b33; }.message-error .message-content { color: #ffaaaa; }.user-text { margin: 0; white-space: pre-wrap; line-height: 1.52; }.markdown-body { color: #eff0f2; line-height: 1.64; overflow-wrap: anywhere; }.markdown-body :deep(p) { margin: 0 0 12px; }.markdown-body :deep(p:last-child) { margin-bottom: 0; }.markdown-body :deep(pre) { overflow-x: auto; padding: 13px; border: 1px solid var(--line); border-radius: 12px; background: #111318; }.markdown-body :deep(code) { font-family: "SFMono-Regular",Consolas,monospace; font-size: .9em; }.markdown-body :deep(a) { color: #9dc1ff; }.message-attachments { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 6px; margin-bottom: 9px; }.message-attachment-open { display: block; padding: 0; overflow: hidden; border: 0; border-radius: 13px; background: transparent; cursor: pointer; }.message-attachments img { display: block; width: 100%; max-height: 240px; object-fit: cover; border-radius: 13px; }.generated-images { display: grid; gap: 10px; margin-top: 12px; }.generated-images figure { position: relative; margin: 0; }.generated-images img { display: block; width: 100%; border-radius: 18px; }.generated-images button, .gallery-grid button { position: absolute; right: 9px; bottom: 9px; padding: 8px 11px; color: #fff; border: 1px solid rgba(255,255,255,.2); border-radius: 10px; background: rgba(0,0,0,.65); backdrop-filter: blur(8px); }.thinking-indicator { display: flex; align-items: center; gap: 4px; min-height: 30px; color: #999da6; }.thinking-indicator span { width: 5px; height: 5px; border-radius: 50%; background: #c6c8ce; animation: pulse 1.2s infinite; }.thinking-indicator span:nth-child(2){animation-delay:.15s}.thinking-indicator span:nth-child(3){animation-delay:.3s}.thinking-indicator em { margin-left: 6px; font-size: 12px; font-style: normal; }@keyframes pulse { 0%,70%,100%{opacity:.25;transform:translateY(0)}35%{opacity:1;transform:translateY(-3px)} }
 .composer-wrap { position: absolute; inset: auto 0 0; padding: 10px 12px 8px; background: linear-gradient(transparent,rgba(11,13,17,.95) 24%,#0b0d11 52%); }.composer { display: grid; grid-template-columns: 38px minmax(0,1fr) 34px 38px; align-items: end; gap: 5px; padding: 7px; border: 1px solid rgba(255,255,255,.13); border-radius: 22px; background: #191c22; box-shadow: 0 14px 40px rgba(0,0,0,.34); }.composer textarea { resize: none; max-height: 120px; min-height: 38px; padding: 9px 4px; color: #fff; border: 0; outline: 0; background: transparent; font-size: 16px; line-height: 1.35; }.composer-action,.spark-button,.send-button { display: grid; place-items: center; width: 36px; height: 36px; border: 0; border-radius: 50%; }.composer-action,.spark-button { color: #c4c7ce; background: transparent; }.spark-button.active { color: #101116; background: #fff; }.send-button { color: #0b0c0f; background: #fff; }.send-button:disabled { color: #6b6e75; background: #30333a; }.send-button.stop span { width: 10px; height: 10px; border-radius: 2px; background: #15171a; }.composer-note { margin: 6px 0 0; color: #656a73; font-size: 9px; text-align: center; }.attachment-strip { display: flex; gap: 8px; overflow-x: auto; margin: 0 4px 8px; }.attachment-preview { position: relative; flex: 0 0 58px; height: 58px; }.attachment-preview img { width: 100%; height: 100%; object-fit: cover; border-radius: 12px; }.attachment-preview button { position: absolute; top: -5px; right: -5px; display: grid; place-items: center; width: 20px; height: 20px; padding: 0; color: #fff; border: 1px solid #555; border-radius: 50%; background: #17191e; }.mode-banner { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 0 3px 7px; padding: 7px 8px 7px 10px; color: #d8d5ff; border: 1px solid rgba(170,150,255,.22); border-radius: 14px; background: rgba(105,80,190,.16); font-size: 12px; }.mode-title { display: flex; align-items: center; gap: 6px; min-width: max-content; font-weight: 750; }.mode-title svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.7; }.image-quick-options { display: flex; align-items: center; justify-content: flex-end; gap: 6px; min-width: 0; flex: 1; }.image-quick-options label { position: relative; display: flex; align-items: center; min-width: 0; }.image-quick-options label > span { position: absolute; left: 10px; color: #aaa6bd; font-size: 9px; pointer-events: none; }.image-quick-options select { min-width: 96px; height: 36px; padding: 0 24px 0 48px; color: #f2efff; border: 1px solid rgba(196,181,253,.18); border-radius: 10px; background: rgba(8,9,13,.46); font: inherit; font-weight: 700; }.image-quick-options label:nth-child(2) select { min-width: 82px; padding-left: 42px; }.mode-banner .mode-close { min-width: 44px; min-height: 36px; padding: 0 8px; color: #b7b1c8; border: 0; border-radius: 9px; background: transparent; font-size: 11px; }.mode-banner .mode-close:hover { color: #fff; background: rgba(255,255,255,.07); }
 .scroll-page { min-height: 0; overflow-y: auto; padding: 24px 16px 42px; }.imagine-page { background: radial-gradient(circle at 50% -10%,rgba(114,82,255,.24),transparent 38%),#0b0d11; }.imagine-hero { padding: 18px 4px 22px; text-align: center; }.imagine-spark { display: block; margin-bottom: 12px; color: #d6cdff; font-size: 36px; text-shadow: 0 0 30px #8068ff; }.imagine-hero h1,.page-title h1 { margin: 0; font-size: clamp(28px,7vw,42px); letter-spacing: -.045em; }.imagine-hero > p:last-child { max-width: 440px; margin: 10px auto 0; color: var(--muted); line-height: 1.5; }.imagine-card,.settings-card,.usage-card { max-width: 620px; margin: 0 auto 24px; padding: 16px; border: 1px solid var(--line); border-radius: 22px; background: rgba(21,24,30,.92); }.imagine-card textarea { width: 100%; resize: vertical; min-height: 126px; padding: 14px; color: #fff; border: 1px solid var(--line); border-radius: 15px; outline: none; background: #0d0f14; font-size: 16px; line-height: 1.5; }.option-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 12px 0; }.option-row label > span { display: block; margin: 0 0 6px 3px; color: #92969f; font-size: 11px; }.option-row select { width: 100%; height: 42px; padding: 0 10px; color: #fff; border: 1px solid var(--line); border-radius: 12px; background: #0e1014; }.imagine-button { height: 50px; margin-top: 4px; background: linear-gradient(120deg,#fff,#cfc5ff); }.gallery-section { max-width: 620px; margin: 0 auto; }.section-heading { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 11px; }.section-heading h2 { margin: 0; font-size: 18px; }.section-heading span { color: #8d919b; font-size: 12px; }.gallery-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }.gallery-grid figure { position: relative; aspect-ratio: 1; margin: 0; overflow: hidden; border-radius: 17px; background: #17191f; }.gallery-grid img { width: 100%; height: 100%; object-fit: cover; }
 .page-title { max-width: 620px; margin: 4px auto 24px; }.new-chat-card,.history-list article { display: flex; align-items: center; width: 100%; max-width: 620px; margin: 0 auto 10px; color: #fff; border: 1px solid var(--line); border-radius: 17px; background: #14171c; text-align: left; }.new-chat-card { gap: 13px; padding: 14px; }.new-chat-card > span { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 13px; background: #fff; color: #0a0b0e; font-size: 22px; }.new-chat-card div,.history-list article div:nth-child(2) { min-width: 0; flex: 1; }.new-chat-card strong,.new-chat-card small,.history-list strong,.history-list small { display: block; }.new-chat-card small,.history-list small { margin-top: 4px; color: #858a94; font-size: 11px; }.history-list article { gap: 11px; padding: 12px; cursor: pointer; }.history-icon { flex: 0 0 36px; width: 36px; height: 36px; border-radius: 12px; }.history-list strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }.history-list article > button { color: #898d96; border: 0; background: transparent; font-size: 22px; }.empty-list { color: #777c85; text-align: center; }

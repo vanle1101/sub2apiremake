@@ -209,66 +209,70 @@ export async function editImage(input: {
   sourceImage: string
   prompt: string
   model: 'grok-imagine-image' | 'grok-imagine-image-quality'
-  size: '1024x1024' | '1024x1536' | '1536x1024'
   signal?: AbortSignal
 }): Promise<ImageGenerationResult> {
+  const originalPrompt = input.prompt.trim()
   const editPrompt = await translateImagePrompt(input.prompt, input.signal)
+  const constrainedPrompt = [
+    'DIRECT IMAGE EDIT — use the supplied source image as the immutable base and change only what the user explicitly requests.',
+    'Never create a new person, subject, scene, pose, composition, or camera shot.',
+    'For color or material changes: preserve exact shapes, textures, shading, reflections, and all unaffected colors.',
+    'For face, hair, expression, body, or clothing changes: preserve the same person and identity, facial structure, body, pose, framing, and every unrequested attribute.',
+    'For background changes: preserve the foreground subject exactly, including its edges, scale, position, lighting direction, and identity.',
+    'For adding, removing, or moving an object: modify only that object and reconstruct only the directly occluded area; leave the rest pixel-faithful.',
+    'For style, weather, season, time, or lighting changes: preserve all subjects, scene geometry, layout, perspective, and camera angle.',
+    'For crop, aspect-ratio, or outpainting requests: preserve every existing source-image detail and extend only the newly exposed area.',
+    'Keep the original dimensions and aspect ratio unless the user explicitly requests a crop, resize, aspect-ratio change, or outpainting.',
+    'Do not add decorations, accessories, text, objects, or details that were not requested. Do not beautify or redesign the image.',
+    `Requested edit (English): ${editPrompt}`,
+    ...(editPrompt.toLocaleLowerCase() !== originalPrompt.toLocaleLowerCase()
+      ? [`Original user instruction (preserve its exact meaning): ${originalPrompt}`]
+      : []),
+  ].join(' ')
 
-  // Prefer the native xAI edit endpoint whenever the active provider supports
-  // it. The source is sent as an official image_url object (data URLs work).
-  try {
-    const response = await fetch(`${API_ROOT}/images/edits`, {
-      method: 'POST',
-      headers: authHeaders(input.apiKey),
-      signal: input.signal,
-      body: JSON.stringify({
-        model: input.model,
-        prompt: editPrompt,
-        image: { type: 'image_url', url: input.sourceImage },
-      }),
-    })
-    if (response.ok) {
-      const result = imageResultFromPayload(await response.json())
-      if (result) return result
+  // Image editing must remain image-to-image. Never fall back to text-to-image:
+  // doing so may replace the person, composition, clothes, and background while
+  // appearing to the user as though the original image was edited.
+  const editModels = input.model === 'grok-imagine-image-quality'
+    ? ['grok-imagine-image-quality', 'grok-imagine-image'] as const
+    : ['grok-imagine-image'] as const
+  let lastError: GrokAPIError | null = null
+
+  for (const [index, model] of editModels.entries()) {
+    let response: Response
+    try {
+      response = await fetch(`${API_ROOT}/images/edits`, {
+        method: 'POST',
+        headers: authHeaders(input.apiKey),
+        signal: input.signal,
+        body: JSON.stringify({
+          model,
+          prompt: constrainedPrompt,
+          image: { type: 'image_url', url: input.sourceImage },
+        }),
+      })
+    } catch (error) {
+      if (input.signal?.aborted) throw error
+      throw new GrokAPIError(error instanceof Error
+        ? `Không thể kết nối API chỉnh sửa ảnh: ${error.message}`
+        : 'Không thể kết nối API chỉnh sửa ảnh.')
     }
-  } catch (error) {
-    if (input.signal?.aborted) throw error
+
+    if (!response.ok) {
+      lastError = await errorFromResponse(response)
+      const canRetryAsFastEdit = index === 0
+        && editModels.length > 1
+        && [400, 404, 422].includes(response.status)
+      if (canRetryAsFastEdit) continue
+      if ([400, 404, 405, 422].includes(response.status)) {
+        throw new GrokAPIError(`Không thể chỉnh trực tiếp ảnh gốc bằng nhà cung cấp hiện tại: ${lastError.message}`, response.status)
+      }
+      throw lastError
+    }
+    const result = imageResultFromPayload(await response.json())
+    if (result) return result
+    throw new GrokAPIError('API chỉnh sửa không trả về dữ liệu ảnh.')
   }
 
-  // Some free image providers do not implement /images/edits. In that case,
-  // use Grok vision to turn the source + requested change into a faithful
-  // generation prompt, then create a new version instead of showing a dead UI.
-  const visionResponse = await fetch(`${API_ROOT}/chat/completions`, {
-    method: 'POST',
-    headers: authHeaders(input.apiKey),
-    signal: input.signal,
-    body: JSON.stringify({
-      model: 'grok-4.6',
-      reasoning_effort: 'low',
-      stream: false,
-      messages: [{
-        role: 'user',
-        content: [
-          {
-            type: 'text',
-            text: `Create one precise English image-generation prompt that recreates this source image while applying this edit: ${editPrompt}. Preserve the original subject, composition, identity, colors and camera angle unless the edit explicitly changes them. Return only the final prompt.`,
-          },
-          { type: 'image_url', image_url: { url: input.sourceImage, detail: 'high' } },
-        ],
-      }],
-    }),
-  })
-  if (!visionResponse.ok) throw await errorFromResponse(visionResponse)
-  const visionPayload = await visionResponse.json()
-  const regeneratedPrompt = visionPayload?.choices?.[0]?.message?.content
-  if (typeof regeneratedPrompt !== 'string' || !regeneratedPrompt.trim()) {
-    throw new GrokAPIError('Không thể đọc ảnh nguồn để chỉnh sửa.')
-  }
-  return generateImage({
-    apiKey: input.apiKey,
-    prompt: regeneratedPrompt.trim(),
-    model: input.model,
-    size: input.size,
-    signal: input.signal,
-  })
+  throw lastError || new GrokAPIError('Không thể chỉnh sửa ảnh bằng model hiện tại.')
 }

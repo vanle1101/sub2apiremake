@@ -14,6 +14,15 @@ vi.mock('@/features/grok-chat/api', () => ({
   streamChat,
 }))
 
+vi.mock('@/features/grok-chat/image', () => ({
+  prepareImage: vi.fn().mockResolvedValue({
+    id: 'uploaded-image',
+    name: 'source.png',
+    dataUrl: 'data:image/png;base64,source-image',
+    mimeType: 'image/png',
+  }),
+}))
+
 import GrokChatView from '../GrokChatView.vue'
 
 describe('GrokChatView image composer', () => {
@@ -137,5 +146,26 @@ describe('GrokChatView image composer', () => {
     await flushPromises()
     expect(editImage).toHaveBeenCalledWith(expect.objectContaining({ sourceImage: 'data:image/png;base64,dGVzdA==', prompt: 'Đổi ngôi nhà thành màu xanh' }))
     expect(wrapper.get('[role="dialog"] img').attributes('src')).toBe('data:image/png;base64,ZWQ=')
+  })
+
+  it('edits an uploaded source instead of generating a replacement image', async () => {
+    const wrapper = mount(GrokChatView)
+    await flushPromises()
+    await wrapper.get('button[aria-label="Đổi chế độ tạo ảnh"]').trigger('click')
+
+    const input = wrapper.get('input[type="file"]').element as HTMLInputElement
+    Object.defineProperty(input, 'files', { value: [new File(['source'], 'source.png', { type: 'image/png' })] })
+    await wrapper.get('input[type="file"]').trigger('change')
+    await flushPromises()
+
+    await wrapper.get('textarea[placeholder="Mô tả chính xác phần cần thay đổi…"]').setValue('Chỉ đổi màu tóc thành xanh, giữ nguyên mọi thứ khác')
+    await wrapper.get('button[aria-label="Gửi"]').trigger('click')
+    await flushPromises()
+
+    expect(editImage).toHaveBeenCalledWith(expect.objectContaining({
+      sourceImage: 'data:image/png;base64,source-image',
+      prompt: 'Chỉ đổi màu tóc thành xanh, giữ nguyên mọi thứ khác',
+    }))
+    expect(generateImage).not.toHaveBeenCalled()
   })
 })
