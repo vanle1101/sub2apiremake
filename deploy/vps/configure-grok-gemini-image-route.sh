@@ -49,7 +49,8 @@ updated AS (
         'model_mapping', jsonb_build_object(
           'grok-imagine', :'gemini_model',
           'grok-imagine-image', :'gemini_model',
-          'grok-imagine-image-quality', :'gemini_model'
+          'grok-imagine-image-quality', :'gemini_model',
+          :'gemini_model', :'gemini_model'
         )
       ),
       status = 'active',
@@ -81,7 +82,8 @@ inserted AS (
       'model_mapping', jsonb_build_object(
         'grok-imagine', :'gemini_model',
         'grok-imagine-image', :'gemini_model',
-        'grok-imagine-image-quality', :'gemini_model'
+        'grok-imagine-image-quality', :'gemini_model',
+        :'gemini_model', :'gemini_model'
       )
     ),
     '{}'::jsonb,
@@ -133,6 +135,29 @@ DO UPDATE SET
   enabled = EXCLUDED.enabled,
   notes = EXCLUDED.notes,
   updated_at = NOW();
+
+WITH image_account AS (
+  SELECT id
+  FROM accounts
+  WHERE name = 'Gemini Image Gateway'
+    AND platform = 'openai'
+    AND deleted_at IS NULL
+  ORDER BY id
+  LIMIT 1
+)
+INSERT INTO scheduler_outbox (event_type, account_id, group_id, payload)
+SELECT event_type, account_id, group_id, '{}'::jsonb
+FROM image_account
+CROSS JOIN LATERAL (
+  VALUES
+    ('account_changed'::text, image_account.id, NULL::bigint),
+    ('account_groups_changed'::text, image_account.id, :group_id::bigint)
+) AS events(event_type, account_id, group_id);
+
+INSERT INTO scheduler_outbox (event_type, account_id, group_id, payload)
+VALUES
+  ('group_changed', NULL, :group_id, '{}'::jsonb),
+  ('full_rebuild', NULL, NULL, '{}'::jsonb);
 
 COMMIT;
 SQL
