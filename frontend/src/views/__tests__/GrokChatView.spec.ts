@@ -1,12 +1,15 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { generateImage } = vi.hoisted(() => ({ generateImage: vi.fn() }))
+const { generateImage, streamChat } = vi.hoisted(() => ({
+  generateImage: vi.fn(),
+  streamChat: vi.fn(),
+}))
 
 vi.mock('@/features/grok-chat/api', () => ({
   generateImage,
   getUsage: vi.fn(),
-  streamChat: vi.fn(),
+  streamChat,
 }))
 
 import GrokChatView from '../GrokChatView.vue'
@@ -18,6 +21,8 @@ describe('GrokChatView image composer', () => {
     window.history.replaceState({}, '', '/chat?preview')
     generateImage.mockReset()
     generateImage.mockResolvedValue({ url: 'data:image/png;base64,dGVzdA==' })
+    streamChat.mockReset()
+    streamChat.mockImplementation(async ({ onText }: { onText: (chunk: string) => void }) => onText('Xin chào'))
   })
 
   it('sends the selected speed model and aspect ratio to image generation', async () => {
@@ -62,5 +67,21 @@ describe('GrokChatView image composer', () => {
 
     expect(wrapper.get('.mobile-drawer').classes()).not.toContain('open')
     expect(wrapper.get('.imagine-page').exists()).toBe(true)
+  })
+
+  it('sends the selected reasoning speed to the chat API', async () => {
+    const wrapper = mount(GrokChatView)
+    await flushPromises()
+
+    await wrapper.get('.speed-trigger').trigger('click')
+    const thinking = wrapper.findAll('.speed-options button').find((button) => button.text().trim() === 'Thinking')
+    expect(thinking).toBeDefined()
+    await thinking!.trigger('click')
+    await wrapper.get('textarea[placeholder="Làm với bất kỳ nội dung nào"]').setValue('Xin chào')
+    await wrapper.get('button[aria-label="Gửi"]').trigger('click')
+    await flushPromises()
+
+    expect(streamChat).toHaveBeenCalledWith(expect.objectContaining({ reasoning: 'high' }))
+    expect(wrapper.get('.speed-trigger').text()).toContain('Suy nghĩ kỹ')
   })
 })

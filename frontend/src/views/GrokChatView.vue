@@ -52,12 +52,31 @@ const busy = ref(false)
 const controller = ref<AbortController | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
 const messageScroller = ref<HTMLElement | null>(null)
+const modelMenuOpen = ref(false)
+const speedMenuOpen = ref(false)
 
 const imaginePrompt = ref('')
 const imagineModel = ref<ImageModel>('grok-imagine-image-quality')
 const imagineSize = ref<ImageSize>('1024x1024')
 const imagineError = ref('')
 const reasoningModes: ReasoningMode[] = ['low', 'medium', 'high']
+
+const reasoningLabel = computed(() => ({ low: 'Nhanh', medium: 'Tiêu chuẩn', high: 'Suy nghĩ kỹ' })[reasoning.value])
+
+function toggleModelMenu() {
+  modelMenuOpen.value = !modelMenuOpen.value
+  speedMenuOpen.value = false
+}
+
+function toggleSpeedMenu() {
+  speedMenuOpen.value = !speedMenuOpen.value
+  modelMenuOpen.value = false
+}
+
+function selectReasoning(mode: ReasoningMode) {
+  reasoning.value = mode
+  speedMenuOpen.value = false
+}
 
 marked.setOptions({ breaks: true, gfm: true })
 
@@ -505,7 +524,7 @@ onBeforeUnmount(() => controller.value?.abort())
           <div v-if="!activeConversation?.messages.length" class="empty-chat">
           <div class="orb"><span><GrokLogo /></span></div>
           <span class="empty-kicker">GROK 4.6</span>
-            <h2><span class="mobile-heading">Hôm nay bạn muốn làm gì?</span><span class="desktop-heading">Hôm nay bạn có ý tưởng gì?</span></h2>
+            <h2><span class="mobile-heading">Ta nên bắt đầu việc gì?</span><span class="desktop-heading">Ta nên bắt đầu việc gì?</span></h2>
             <p>Hỏi bất cứ điều gì, gửi ảnh để phân tích hoặc tạo một hình ảnh mới.</p>
             <div class="suggestion-grid">
               <button @click="prompt = 'Giúp tôi lên kế hoạch công việc hôm nay'">Lên kế hoạch hôm nay</button>
@@ -573,23 +592,56 @@ onBeforeUnmount(() => controller.value?.abort())
             </div>
             <button class="mode-close" aria-label="Đóng chế độ tạo ảnh" @click="composerMode = 'chat'">Đóng</button>
           </div>
-          <div class="composer">
-            <button class="composer-action" aria-label="Đính kèm ảnh" @click="fileInput?.click()">
-              <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>
-            </button>
+          <div class="composer" :class="{ 'has-menu': modelMenuOpen || speedMenuOpen }">
             <textarea
               v-model="prompt"
               rows="1"
-              :placeholder="composerMode === 'image' ? 'Mô tả hình ảnh bạn muốn tạo…' : 'Nhắn tin cho Grok…'"
+              :placeholder="composerMode === 'image' ? 'Mô tả hình ảnh bạn muốn tạo…' : 'Làm với bất kỳ nội dung nào'"
               @keydown.enter.exact.prevent="sendMessage"
             ></textarea>
-            <button class="spark-button" :class="{ active: composerMode === 'image' }" aria-label="Đổi chế độ tạo ảnh" :aria-pressed="composerMode === 'image'" @click="switchComposerMode">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 1.5 5.5L19 10l-5.5 1.5L12 17l-1.5-5.5L5 10l5.5-1.5z" /></svg>
-            </button>
-            <button v-if="busy" class="send-button stop" aria-label="Dừng" @click="stopResponse"><span></span></button>
-            <button v-else class="send-button" :disabled="!canSend" aria-label="Gửi" @click="sendMessage">
-              <svg viewBox="0 0 24 24"><path d="m5 12 7-7 7 7M12 19V5" /></svg>
-            </button>
+            <div class="composer-toolbar">
+              <button class="composer-action" aria-label="Đính kèm ảnh" title="Đính kèm ảnh" @click="fileInput?.click()">
+                <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>
+              </button>
+              <div class="composer-tools">
+                <div class="model-picker">
+                  <button class="model-picker-trigger" aria-haspopup="menu" :aria-expanded="modelMenuOpen" @click="toggleModelMenu">
+                    <span>Grok 4.6</span>
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4" /></svg>
+                  </button>
+                  <div v-if="modelMenuOpen" class="model-menu" role="menu" aria-label="Chọn mô hình">
+                    <button class="model-menu-default" role="menuitemradio" aria-checked="true" @click="modelMenuOpen = false">
+                      <span><strong>Mặc định</strong><small>Mô hình Grok nhanh và thông minh</small></span>
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6" /></svg>
+                    </button>
+                    <div class="model-menu-divider"></div>
+                    <button role="menuitemradio" aria-checked="true" @click="modelMenuOpen = false">Grok 4.6</button>
+                  </div>
+                </div>
+                <div class="speed-picker">
+                  <button class="speed-trigger" :title="`Tốc độ: ${reasoningLabel}`" aria-haspopup="menu" :aria-expanded="speedMenuOpen" @click="toggleSpeedMenu">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m13 2-8 12h7l-1 8 8-12h-7z" /></svg>
+                    <span>{{ reasoningLabel }}</span>
+                  </button>
+                  <div v-if="speedMenuOpen" class="speed-menu" role="menu" aria-label="Chọn tốc độ trả lời">
+                    <div class="speed-menu-title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m13 2-8 12h7l-1 8 8-12h-7z" /></svg><strong>Grok 4.6 · {{ reasoningLabel }}</strong></div>
+                    <div class="speed-track" aria-hidden="true"><span :class="`at-${reasoning}`"></span><i></i><i></i><i></i></div>
+                    <div class="speed-options">
+                      <button v-for="mode in reasoningModes" :key="mode" role="menuitemradio" :aria-checked="reasoning === mode" :class="{ active: reasoning === mode }" @click="selectReasoning(mode)">
+                        {{ mode === 'low' ? 'Nhanh' : mode === 'medium' ? 'Chuẩn' : 'Thinking' }}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <button class="spark-button" :class="{ active: composerMode === 'image' }" aria-label="Đổi chế độ tạo ảnh" :aria-pressed="composerMode === 'image'" @click="switchComposerMode">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 1.5 5.5L19 10l-5.5 1.5L12 17l-1.5-5.5L5 10l5.5-1.5z" /></svg>
+                </button>
+                <button v-if="busy" class="send-button stop" aria-label="Dừng" @click="stopResponse"><span></span></button>
+                <button v-else class="send-button" :disabled="!canSend" aria-label="Gửi" @click="sendMessage">
+                  <svg viewBox="0 0 24 24"><path d="m5 12 7-7 7 7M12 19V5" /></svg>
+                </button>
+              </div>
+            </div>
           </div>
           <div v-if="!activeConversation?.messages.length" class="desktop-quick-actions" aria-label="Gợi ý bắt đầu">
             <button @click="composerMode = 'image'; prompt = 'Tạo một hình ảnh theo mô tả của tôi'">
@@ -1365,5 +1417,137 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .desktop-mode-switch button.active { color: var(--theme-text); background: var(--theme-surface-active); box-shadow: none; }
   .chat-empty .composer-wrap { background: transparent; }
   .empty-chat h2 { color: var(--theme-text); }
+}
+
+/* ChatGPT-inspired workspace requested for the Grok customer chat. */
+.composer {
+  display: block;
+  position: relative;
+  min-height: 124px;
+  padding: 16px 14px 10px;
+  border-radius: 26px;
+}
+.composer textarea {
+  display: block;
+  width: 100%;
+  min-height: 58px;
+  max-height: 150px;
+  padding: 0 4px 10px;
+  font-size: 15px;
+  line-height: 1.5;
+}
+.composer-toolbar,.composer-tools { display: flex; align-items: center; }
+.composer-toolbar { justify-content: space-between; gap: 12px; min-height: 42px; }
+.composer-tools { justify-content: flex-end; gap: 4px; min-width: 0; }
+.composer-action,.spark-button,.send-button { flex: 0 0 auto; }
+.model-picker,.speed-picker { position: relative; }
+.model-picker-trigger,.speed-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 38px;
+  padding: 0 10px;
+  color: var(--theme-text-secondary);
+  border: 0;
+  border-radius: 19px;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 620;
+  white-space: nowrap;
+}
+.model-picker-trigger:hover,.speed-trigger:hover { color: var(--theme-text); background: var(--theme-surface-hover); }
+.model-picker-trigger:focus-visible,.speed-trigger:focus-visible,.model-menu button:focus-visible,.speed-options button:focus-visible {
+  outline: 2px solid var(--theme-text);
+  outline-offset: 2px;
+}
+.model-picker-trigger svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+.speed-trigger { padding-inline: 9px; }
+.speed-trigger svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linejoin: round; }
+.model-menu,.speed-menu {
+  position: absolute;
+  top: calc(100% + 9px);
+  right: 0;
+  z-index: 30;
+  color: var(--theme-text);
+  border: 1px solid var(--theme-border-strong);
+  border-radius: 22px;
+  background: var(--theme-surface-raised);
+  box-shadow: 0 18px 50px rgba(0,0,0,.38);
+}
+.model-menu { width: 260px; padding: 10px; }
+.model-menu button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 46px;
+  padding: 9px 10px;
+  color: var(--theme-text);
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  text-align: left;
+}
+.model-menu button:hover { background: var(--theme-surface-hover); }
+.model-menu button > span { display: grid; gap: 4px; }
+.model-menu strong { font-size: 13px; }
+.model-menu small { max-width: 185px; color: var(--theme-text-tertiary); font-size: 11px; line-height: 1.35; }
+.model-menu svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+.model-menu-divider { height: 1px; margin: 7px 8px; background: var(--theme-border); }
+.speed-menu { width: 270px; padding: 14px 14px 12px; }
+.speed-menu-title { display: flex; align-items: center; gap: 9px; min-height: 28px; font-size: 13px; }
+.speed-menu-title svg { width: 17px; height: 17px; fill: none; stroke: var(--theme-text-tertiary); stroke-width: 1.8; }
+.speed-track { position: relative; display: flex; align-items: center; justify-content: space-between; height: 14px; margin: 14px 4px 5px; }
+.speed-track::before { content: ''; position: absolute; inset: 5px 0 auto; height: 4px; border-radius: 4px; background: var(--theme-surface-active); }
+.speed-track span { position: absolute; left: 0; top: 5px; z-index: 1; height: 4px; border-radius: 4px; background: #2f91ff; transition: width .18s ease; }
+.speed-track span.at-low { width: 5%; }.speed-track span.at-medium { width: 50%; }.speed-track span.at-high { width: 100%; }
+.speed-track i { position: relative; z-index: 2; width: 10px; height: 10px; border: 2px solid var(--theme-surface-raised); border-radius: 50%; background: var(--theme-text-tertiary); }
+.speed-options { display: grid; grid-template-columns: repeat(3,1fr); gap: 4px; }
+.speed-options button { min-height: 34px; color: var(--theme-text-tertiary); border: 0; border-radius: 10px; background: transparent; font-size: 11px; }
+.speed-options button:hover,.speed-options button.active { color: var(--theme-text); background: var(--theme-surface-hover); }
+
+@media (min-width: 900px) {
+  .app-shell { grid-template-columns: 260px minmax(0,1fr); }
+  .app-shell.sidebar-collapsed { grid-template-columns: 68px minmax(0,1fr); }
+  .desktop-sidebar { padding: 8px 10px 12px; background: var(--theme-sidebar); }
+  .sidebar-brand { min-height: 46px; padding: 4px 7px 8px; }
+  .sidebar-brand strong { font-size: 17px; }
+  .sidebar-new { justify-content: flex-start; min-height: 38px; border: 0; border-radius: 10px; background: var(--theme-surface-active); }
+  .sidebar-nav { margin-top: 4px; }
+  .sidebar-nav button { min-height: 40px; }
+  .sidebar-recents { margin-top: 22px; }
+  .app-header { height: 58px; padding: 5px 22px 0; }
+  .desktop-mode-switch { width: 300px; height: 38px; padding: 3px; border-radius: 21px; }
+  .desktop-mode-switch button { border-radius: 18px; }
+  .chat-empty .empty-chat { transform: translateY(-118px); }
+  .chat-empty .empty-chat h2 { font-size: 24px; font-weight: 520; letter-spacing: -.025em; }
+  .chat-empty .composer-wrap { top: calc(50% - 62px); bottom: auto; }
+  .composer-wrap { padding-inline: clamp(28px,8vw,150px); }
+  .composer,.message-row,.mode-banner,.attachment-strip,.desktop-quick-actions { max-width: 770px; }
+  .composer { min-height: 128px; border-radius: 27px; }
+  .composer-action,.spark-button,.send-button { width: 38px; height: 38px; }
+  .desktop-quick-actions { grid-template-columns: 1fr; gap: 2px; margin-top: 12px; }
+  .desktop-quick-actions button { min-height: 46px; padding: 7px 12px; border: 0; border-radius: 12px; }
+  .desktop-quick-actions button span { display: flex; align-items: baseline; gap: 12px; }
+  .desktop-quick-actions button small { margin: 0; }
+}
+
+@media (max-width: 899px) {
+  .composer { display: block; min-height: 116px; padding: 15px 12px 10px; border-radius: 28px; }
+  .composer textarea { min-height: 50px; padding: 0 7px 8px; }
+  .composer-toolbar { min-height: 48px; }
+  .composer-action,.spark-button,.send-button { width: 44px; height: 44px; }
+  .model-picker-trigger { max-width: 104px; padding-inline: 8px; }
+  .speed-trigger { width: 42px; padding: 0; }
+  .speed-trigger span { display: none; }
+  .model-menu,.speed-menu { top: auto; right: 0; bottom: calc(100% + 9px); }
+  .model-menu { width: min(260px,calc(100vw - 32px)); }
+  .speed-menu { width: min(270px,calc(100vw - 32px)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .speed-track span,.mobile-drawer { transition: none; }
 }
 </style>
