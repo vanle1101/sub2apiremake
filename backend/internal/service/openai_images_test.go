@@ -735,6 +735,7 @@ func TestBuildPollinationsLegacyImageRequest(t *testing.T) {
 	require.Equal(t, "512", req.URL.Query().Get("width"))
 	require.Equal(t, "768", req.URL.Query().Get("height"))
 	require.Equal(t, "true", req.URL.Query().Get("safe"))
+	require.NotEmpty(t, req.URL.Query().Get("seed"))
 }
 
 func TestHandlePollinationsLegacyImageResponseWrapsOpenAIJSON(t *testing.T) {

@@ -55,7 +55,7 @@ updated AS (
       ),
       status = 'active',
       schedulable = TRUE,
-      priority = 2,
+      priority = 1,
       error_message = NULL,
       updated_at = NOW()
   WHERE id IN (SELECT id FROM existing)
@@ -130,7 +130,7 @@ updated AS (
       status = 'active',
       schedulable = TRUE,
       concurrency = 3,
-      priority = 1,
+      priority = 2,
       error_message = NULL,
       updated_at = NOW()
   WHERE id IN (SELECT id FROM existing)
@@ -156,7 +156,7 @@ inserted AS (
     ),
     '{}'::jsonb,
     3,
-    1,
+    2,
     'active',
     TRUE
   WHERE NOT EXISTS (SELECT 1 FROM updated)
@@ -228,4 +228,4 @@ VALUES
 COMMIT;
 SQL
 
-echo "Configured group ${GROK_GROUP_ID}: Grok text + Pollinations image + Gemini fallback (${GEMINI_IMAGE_MODEL})"
+echo "Configured group ${GROK_GROUP_ID}: Grok text + Gemini image + Pollinations fallback (${GEMINI_IMAGE_MODEL})"

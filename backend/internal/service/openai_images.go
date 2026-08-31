@@ -800,6 +800,9 @@ func buildPollinationsLegacyImageRequest(ctx context.Context, account *Account, 
 	query.Set("model", model)
 	query.Set("nologo", "true")
 	query.Set("safe", "true")
+	// The legacy endpoint is fronted by a cache keyed by URL. A unique seed
+	// prevents a stale image generated for another prompt from being reused.
+	query.Set("seed", strconv.FormatInt(time.Now().UnixNano(), 10))
 	if parts := strings.SplitN(parsed.Size, "x", 2); len(parts) == 2 {
 		if width, err := strconv.Atoi(parts[0]); err == nil && width >= 256 && width <= 2048 {
 			query.Set("width", strconv.Itoa(width))

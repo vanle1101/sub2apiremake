@@ -138,6 +138,43 @@ export async function generateImage(input: {
   size: '1024x1024' | '1024x1536' | '1536x1024'
   signal?: AbortSignal
 }): Promise<ImageGenerationResult> {
+  // Free image fallbacks are much more reliable with a concrete English
+  // prompt. Let Grok preserve the user's intent and translate/expand short
+  // Vietnamese prompts before the image request. If that helper call is
+  // unavailable, keep the original prompt instead of blocking generation.
+  let imagePrompt = input.prompt.trim()
+  try {
+    const promptResponse = await fetch(`${API_ROOT}/chat/completions`, {
+      method: 'POST',
+      headers: authHeaders(input.apiKey),
+      signal: input.signal,
+      body: JSON.stringify({
+        model: 'grok-4.6',
+        reasoning_effort: 'low',
+        stream: false,
+        temperature: 0.2,
+        messages: [
+          {
+            role: 'system',
+            content: [
+              'Rewrite the user request as one precise English image-generation prompt.',
+              'Preserve every requested subject and detail. Do not add unrelated people, text, logos, or explanations.',
+              'Return only the prompt, without quotation marks or markdown.',
+            ].join(' '),
+          },
+          { role: 'user', content: imagePrompt },
+        ],
+      }),
+    })
+    if (promptResponse.ok) {
+      const payload = await promptResponse.json()
+      const optimized = payload?.choices?.[0]?.message?.content
+      if (typeof optimized === 'string' && optimized.trim()) imagePrompt = optimized.trim()
+    }
+  } catch (error) {
+    if (input.signal?.aborted) throw error
+  }
+
   const models = input.model === 'grok-imagine-image-quality'
     ? ['grok-imagine-image-quality', 'grok-imagine-image'] as const
     : [input.model] as const
@@ -150,7 +187,7 @@ export async function generateImage(input: {
       signal: input.signal,
       // xAI's native image endpoint accepts model + prompt. The gateway strips
       // unsupported sizing fields, so keep this payload minimal and portable.
-      body: JSON.stringify({ model, prompt: input.prompt }),
+      body: JSON.stringify({ model, prompt: imagePrompt }),
     })
     if (!response.ok) {
       lastError = await errorFromResponse(response)

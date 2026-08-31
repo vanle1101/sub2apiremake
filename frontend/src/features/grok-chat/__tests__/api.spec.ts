@@ -49,9 +49,13 @@ describe('grok chat api', () => {
   })
 
   it('normalizes base64 image generation responses into a data URL', async () => {
-    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
-      data: [{ b64_json: 'aW1hZ2U=' }],
-    }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        choices: [{ message: { content: 'An astronaut cat' } }],
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        data: [{ b64_json: 'aW1hZ2U=' }],
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
 
     const result = await generateImage({
       apiKey: 'sk-customer',
@@ -60,14 +64,17 @@ describe('grok chat api', () => {
       size: '1024x1024',
     })
     expect(result.url).toBe('data:image/png;base64,aW1hZ2U=')
-    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+    expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toEqual({
       model: 'grok-imagine-image',
-      prompt: 'mèo phi hành gia',
+      prompt: 'An astronaut cat',
     })
   })
 
   it('falls back to the fast model and accepts alternate image payloads', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        choices: [{ message: { content: 'A Vietnamese landscape' } }],
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ error: { message: 'model unavailable' } }), {
         status: 422,
         headers: { 'Content-Type': 'application/json' },
@@ -84,8 +91,8 @@ describe('grok chat api', () => {
     })
 
     expect(result.url).toBe('https://images.example/generated.png')
-    expect(fetchMock).toHaveBeenCalledTimes(2)
-    expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body)).model).toBe('grok-imagine-image')
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+    expect(JSON.parse(String(fetchMock.mock.calls[2]?.[1]?.body)).model).toBe('grok-imagine-image')
   })
 
   it('returns a clear error for rejected keys', async () => {
