@@ -108,4 +108,14 @@ describe('GrokChatView image composer', () => {
     expect(wrapper.get('.speed-trigger').text()).toContain('Suy nghĩ kỹ')
     expect(wrapper.get('input[aria-label="Điều chỉnh tốc độ trả lời"]').attributes('value')).toBe('2')
   })
+
+  it('keeps reasoning controls only in the chat composer', async () => {
+    const wrapper = mount(GrokChatView)
+    await flushPromises()
+
+    await wrapper.get('.sidebar-settings').trigger('click')
+
+    expect(wrapper.get('.settings-page').text()).not.toContain('Chế độ trả lời')
+    expect(wrapper.find('.reasoning-option').exists()).toBe(false)
+  })
 })
