@@ -411,13 +411,21 @@ onBeforeUnmount(() => controller.value?.abort())
     <div v-else class="app-shell" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
       <aside class="desktop-sidebar" aria-label="Điều hướng chính">
         <div class="sidebar-brand">
-          <div class="brand-glyph"><GrokLogo /></div>
+          <button
+            v-if="sidebarCollapsed"
+            class="brand-glyph brand-expand"
+            aria-label="Mở rộng thanh bên"
+            title="Mở rộng thanh bên"
+            @click="sidebarCollapsed = false"
+          ><GrokLogo /></button>
+          <div v-else class="brand-glyph"><GrokLogo /></div>
           <div class="sidebar-brand-copy"><strong>Grok</strong><small>Grok 4.6</small></div>
           <button
+            v-if="!sidebarCollapsed"
             class="sidebar-toggle"
-            :aria-label="sidebarCollapsed ? 'Mở rộng thanh bên' : 'Thu gọn thanh bên'"
-            :title="sidebarCollapsed ? 'Mở rộng thanh bên' : 'Thu gọn thanh bên'"
-            @click="sidebarCollapsed = !sidebarCollapsed"
+            aria-label="Thu gọn thanh bên"
+            title="Thu gọn thanh bên"
+            @click="sidebarCollapsed = true"
           >
             <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M9 4v16" /></svg>
           </button>
@@ -1440,6 +1448,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .composer-toolbar { justify-content: space-between; gap: 12px; min-height: 42px; }
 .composer-tools { justify-content: flex-end; gap: 4px; min-width: 0; }
 .composer-action,.spark-button,.send-button { flex: 0 0 auto; }
+.brand-expand { padding: 0; border: 0; background: transparent; cursor: pointer; }
 .model-picker,.speed-picker { position: relative; }
 .model-picker-trigger,.speed-trigger {
   display: flex;
@@ -1523,8 +1532,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .desktop-mode-switch { width: 300px; height: 38px; padding: 3px; border-radius: 21px; }
   .desktop-mode-switch button { border-radius: 18px; }
   .sidebar-collapsed .sidebar-brand {
-    display: grid;
-    grid-template-columns: 26px 30px;
+    display: flex;
     justify-content: center;
     gap: 0;
     padding: 4px 0 8px;

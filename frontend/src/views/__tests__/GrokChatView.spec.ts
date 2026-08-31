@@ -84,4 +84,17 @@ describe('GrokChatView image composer', () => {
     expect(streamChat).toHaveBeenCalledWith(expect.objectContaining({ reasoning: 'high' }))
     expect(wrapper.get('.speed-trigger').text()).toContain('Suy nghĩ kỹ')
   })
+
+  it('uses the Grok logo to reopen the collapsed desktop sidebar', async () => {
+    const wrapper = mount(GrokChatView)
+    await flushPromises()
+
+    await wrapper.get('button[aria-label="Thu gọn thanh bên"]').trigger('click')
+    expect(wrapper.get('.app-shell').classes()).toContain('sidebar-collapsed')
+    expect(wrapper.find('button[aria-label="Thu gọn thanh bên"]').exists()).toBe(false)
+
+    await wrapper.get('button[aria-label="Mở rộng thanh bên"]').trigger('click')
+    expect(wrapper.get('.app-shell').classes()).not.toContain('sidebar-collapsed')
+    expect(wrapper.get('button[aria-label="Thu gọn thanh bên"]').exists()).toBe(true)
+  })
 })
