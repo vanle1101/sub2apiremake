@@ -7,6 +7,14 @@ import type {
 
 const API_ROOT = '/v1'
 
+const CHAT_SYSTEM_PROMPT = [
+  'Bạn là Myhanh Grok, trợ lý trò chuyện thông minh sử dụng mô hình Grok 4.6.',
+  'Trả lời đúng trọng tâm, tự nhiên, rõ ràng và bằng ngôn ngữ của người dùng.',
+  'Không lặp từ, không dùng giọng quảng cáo, không tự thêm emoji, lời tâng bốc hoặc câu dẫn thừa.',
+  'Không tuyên bố đã tạo ảnh, mở file hay thực hiện hành động nếu chưa có kết quả thật.',
+  'Nếu người dùng muốn tạo ảnh trong chế độ chat, hãy hướng dẫn ngắn gọn rằng họ cần chọn nút Tạo ảnh.',
+].join(' ')
+
 export class GrokAPIError extends Error {
   status: number
 
@@ -84,10 +92,13 @@ export async function streamChat(input: {
       model: 'grok-4.6',
       reasoning_effort: input.reasoning,
       stream: true,
-      messages: input.messages.map((message) => ({
-        role: message.role,
-        content: messageContent(message),
-      })),
+      messages: [
+        { role: 'system', content: CHAT_SYSTEM_PROMPT },
+        ...input.messages.map((message) => ({
+          role: message.role,
+          content: messageContent(message),
+        })),
+      ],
     }),
   })
 

@@ -1231,6 +1231,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 :global(#app:has(.grok-mobile[data-theme="light"])) { background: #fff; color-scheme: light; }
 
 .grok-mobile { color: var(--theme-text); background: var(--theme-canvas); }
+.grok-mobile ::selection { color: var(--theme-on-accent); background: var(--theme-accent); }
+.grok-mobile ::-moz-selection { color: var(--theme-on-accent); background: var(--theme-accent); }
 .app-shell,.chat-page,.imagine-page,.history-page,.settings-page { background: var(--theme-canvas); }
 .app-header { border-color: var(--theme-border); background: color-mix(in srgb,var(--theme-canvas) 88%,transparent); }
 .icon-button,.balance-pill { color: var(--theme-text); border-color: var(--theme-border); background: var(--theme-surface-raised); }
@@ -1250,7 +1252,16 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 
 .messages { scrollbar-color: var(--theme-border-strong) transparent; }
 .message-user .message-content { color: var(--theme-text); border-color: var(--theme-border); background: var(--theme-surface-hover); }
-.markdown-body { color: var(--theme-text); }
+.markdown-body,
+.markdown-body :deep(strong),
+.markdown-body :deep(em),
+.markdown-body :deep(h1),
+.markdown-body :deep(h2),
+.markdown-body :deep(h3),
+.markdown-body :deep(h4),
+.markdown-body :deep(li),
+.markdown-body :deep(blockquote) { color: var(--theme-text); }
+.markdown-body :deep(code) { color: var(--theme-text); }
 .markdown-body :deep(pre) { border-color: var(--theme-border); background: var(--theme-surface-raised); }
 .markdown-body :deep(a) { color: var(--theme-text); text-decoration: underline; text-underline-offset: 3px; }
 .message-error .message-content,.form-error { color: var(--theme-danger); }

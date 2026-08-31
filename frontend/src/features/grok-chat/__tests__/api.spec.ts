@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { extractSSEText, generateImage, getUsage, GrokAPIError } from '../api'
+import { extractSSEText, generateImage, getUsage, GrokAPIError, streamChat } from '../api'
 
 describe('grok chat api', () => {
   beforeEach(() => vi.restoreAllMocks())
@@ -22,6 +22,30 @@ describe('grok chat api', () => {
     expect(fetchMock).toHaveBeenCalledWith('/v1/usage', expect.objectContaining({
       headers: expect.objectContaining({ Authorization: 'Bearer sk-customer' }),
     }))
+  })
+
+  it('sends a concise customer-chat instruction before the conversation', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(
+      'data: {"choices":[{"delta":{"content":"Xin chào"}}]}\n\ndata: [DONE]\n\n',
+      { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
+    ))
+    const chunks: string[] = []
+
+    await streamChat({
+      apiKey: 'sk-customer',
+      reasoning: 'low',
+      messages: [{ id: 'user-1', role: 'user', text: 'hi', createdAt: 1 }],
+      onText: (chunk) => chunks.push(chunk),
+    })
+
+    const payload = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))
+    expect(payload.reasoning_effort).toBe('low')
+    expect(payload.messages[0]).toEqual(expect.objectContaining({ role: 'system' }))
+    expect(payload.messages[0].content).toContain('Không lặp từ')
+    expect(payload.messages[0].content).toContain('không tự thêm emoji')
+    expect(payload.messages[0].content).toContain('chưa có kết quả thật')
+    expect(payload.messages[1]).toEqual({ role: 'user', content: 'hi' })
+    expect(chunks).toEqual(['Xin chào'])
   })
 
   it('normalizes base64 image generation responses into a data URL', async () => {
