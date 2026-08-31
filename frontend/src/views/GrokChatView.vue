@@ -1467,7 +1467,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .speed-trigger svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linejoin: round; }
 .model-menu,.speed-menu {
   position: absolute;
-  top: calc(100% + 9px);
+  top: auto;
+  bottom: calc(100% + 9px);
   right: 0;
   z-index: 30;
   color: var(--theme-text);
@@ -1521,6 +1522,25 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .app-header { height: 58px; padding: 5px 22px 0; }
   .desktop-mode-switch { width: 300px; height: 38px; padding: 3px; border-radius: 21px; }
   .desktop-mode-switch button { border-radius: 18px; }
+  .sidebar-collapsed .sidebar-brand {
+    display: grid;
+    grid-template-columns: 26px 30px;
+    justify-content: center;
+    gap: 0;
+    padding: 4px 0 8px;
+  }
+  .sidebar-collapsed .brand-glyph {
+    width: 24px;
+    height: 24px;
+  }
+  .sidebar-collapsed .brand-glyph .grok-logo {
+    width: 24px;
+    height: 24px;
+  }
+  .sidebar-collapsed .sidebar-toggle {
+    width: 30px;
+    height: 30px;
+  }
   .chat-empty .empty-chat { transform: translateY(-118px); }
   .chat-empty .empty-chat h2 { font-size: 24px; font-weight: 520; letter-spacing: -.025em; }
   .chat-empty .composer-wrap { top: calc(50% - 62px); bottom: auto; }
@@ -1542,7 +1562,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .model-picker-trigger { max-width: 104px; padding-inline: 8px; }
   .speed-trigger { width: 42px; padding: 0; }
   .speed-trigger span { display: none; }
-  .model-menu,.speed-menu { top: auto; right: 0; bottom: calc(100% + 9px); }
+  .model-menu,.speed-menu { right: 0; }
   .model-menu { width: min(260px,calc(100vw - 32px)); }
   .speed-menu { width: min(270px,calc(100vw - 32px)); }
 }

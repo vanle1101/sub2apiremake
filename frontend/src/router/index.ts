@@ -45,7 +45,7 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/GrokChatView.vue'),
     meta: {
       requiresAuth: false,
-      title: 'Grok Mobile'
+      title: 'Myhanh Grok'
     }
   },
   {

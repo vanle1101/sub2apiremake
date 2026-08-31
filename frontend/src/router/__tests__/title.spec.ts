@@ -25,6 +25,14 @@ describe('resolveDocumentTitle', () => {
 })
 
 describe('resolveRouteDocumentTitle', () => {
+  it('uses the customer-facing Grok brand without the gateway suffix', () => {
+    expect(resolveRouteDocumentTitle({
+      name: 'GrokChat',
+      params: {},
+      meta: { title: 'Myhanh Grok' },
+    }, 'Sub2API')).toBe('Myhanh Grok')
+  })
+
   it('自定义页面菜单加载后，使用菜单名称作为标题', () => {
     const route = {
       name: 'CustomPage',
