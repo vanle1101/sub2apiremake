@@ -111,7 +111,10 @@ services:
       REDIS_PASSWORD: ${REDIS_PASSWORD}
     volumes:
       - redis_data:/data
-    mem_limit: 128m
+    # The Grok scheduler snapshots all active OAuth accounts in Redis. The
+    # production pool is large enough to exceed 128 MiB and causes multi-second
+    # Redis stalls while rebuilding the cache, so keep sufficient headroom.
+    mem_limit: 512m
     healthcheck:
       test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$REDIS_PASSWORD\" redis-cli ping | grep -q PONG"]
       interval: 5s
