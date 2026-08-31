@@ -455,7 +455,9 @@ func applyOpenAIImagesDefaults(req *OpenAIImagesRequest) {
 }
 
 func isOpenAIImageGenerationModel(model string) bool {
-	return IsGPTImageGenerationModel(model) || isGrokImageGenerationModel(model)
+	return IsGPTImageGenerationModel(model) ||
+		isGrokImageGenerationModel(model) ||
+		isGeminiImageGenerationModel(model)
 }
 
 // IsGPTImageGenerationModel identifies the GPT native image-generation model family.
@@ -469,6 +471,15 @@ func isGrokImageGenerationModel(model string) bool {
 	return model == "grok-imagine" ||
 		model == "grok-imagine-edit" ||
 		strings.HasPrefix(model, "grok-imagine-image")
+}
+
+// isGeminiImageGenerationModel allows Gemini's OpenAI-compatible image models
+// to use the /v1/images endpoints when an operator configures a Gemini base URL
+// on an OpenAI-compatible account. Text-only Gemini models remain rejected.
+func isGeminiImageGenerationModel(model string) bool {
+	model = strings.ToLower(strings.TrimSpace(model))
+	return strings.HasPrefix(model, "gemini-") &&
+		(strings.Contains(model, "-image") || strings.Contains(model, "image-generation"))
 }
 
 func validateOpenAIImagesModel(model string) error {
