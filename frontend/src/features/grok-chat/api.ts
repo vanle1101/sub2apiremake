@@ -45,6 +45,38 @@ async function errorFromResponse(response: Response): Promise<GrokAPIError> {
   return new GrokAPIError(message, response.status)
 }
 
+function imageResultFromPayload(payload: any): ImageGenerationResult | null {
+  const image = payload?.data?.[0] || payload?.images?.[0] || payload?.output?.[0] || payload?.image
+  const raw = typeof image === 'string'
+    ? image
+    : image?.url || image?.image_url || image?.b64_json || image?.base64 || image?.result
+  if (typeof raw !== 'string' || !raw.trim()) return null
+  const value = raw.trim()
+  const url = /^(?:https?:|data:|blob:)/i.test(value)
+    ? value
+    : `data:image/png;base64,${value}`
+  return { url, revisedPrompt: image?.revised_prompt || payload?.revised_prompt }
+}
+
+async function translateImagePrompt(prompt: string, signal?: AbortSignal): Promise<string> {
+  const original = prompt.trim()
+  if (!original) return original
+  try {
+    const translationURL = new URL('https://api.mymemory.translated.net/get')
+    translationURL.searchParams.set('q', original)
+    translationURL.searchParams.set('langpair', 'vi|en')
+    const response = await fetch(translationURL, { signal })
+    if (response.ok) {
+      const payload = await response.json()
+      const translated = payload?.responseData?.translatedText
+      if (typeof translated === 'string' && translated.trim()) return translated.trim()
+    }
+  } catch (error) {
+    if (signal?.aborted) throw error
+  }
+  return original
+}
+
 export async function getUsage(apiKey: string): Promise<UsageResponse> {
   const response = await fetch(`${API_ROOT}/usage`, {
     headers: authHeaders(apiKey, false),
@@ -141,22 +173,7 @@ export async function generateImage(input: {
   // Free image fallbacks are much more reliable with an English prompt.
   // Use deterministic machine translation here: a chat model may creatively
   // rewrite a short request and silently replace its actual subject.
-  let imagePrompt = input.prompt.trim()
-  try {
-    const translationURL = new URL('https://api.mymemory.translated.net/get')
-    translationURL.searchParams.set('q', imagePrompt)
-    translationURL.searchParams.set('langpair', 'vi|en')
-    const promptResponse = await fetch(translationURL, {
-      signal: input.signal,
-    })
-    if (promptResponse.ok) {
-      const payload = await promptResponse.json()
-      const translated = payload?.responseData?.translatedText
-      if (typeof translated === 'string' && translated.trim()) imagePrompt = translated.trim()
-    }
-  } catch (error) {
-    if (input.signal?.aborted) throw error
-  }
+  const imagePrompt = await translateImagePrompt(input.prompt, input.signal)
 
   const models = input.model === 'grok-imagine-image-quality'
     ? ['grok-imagine-image-quality', 'grok-imagine-image'] as const
@@ -179,19 +196,79 @@ export async function generateImage(input: {
     }
 
     const payload = await response.json()
-    const image = payload?.data?.[0] || payload?.images?.[0] || payload?.output?.[0] || payload?.image
-    const raw = typeof image === 'string'
-      ? image
-      : image?.url || image?.image_url || image?.b64_json || image?.base64 || image?.result
-    if (typeof raw === 'string' && raw.trim()) {
-      const value = raw.trim()
-      const url = /^(?:https?:|data:|blob:)/i.test(value)
-        ? value
-        : `data:image/png;base64,${value}`
-      return { url, revisedPrompt: image?.revised_prompt || payload?.revised_prompt }
-    }
+    const result = imageResultFromPayload(payload)
+    if (result) return result
     lastError = new GrokAPIError('API không trả về dữ liệu ảnh.')
   }
 
   throw lastError || new GrokAPIError('Không thể tạo ảnh bằng model hiện tại.')
+}
+
+export async function editImage(input: {
+  apiKey: string
+  sourceImage: string
+  prompt: string
+  model: 'grok-imagine-image' | 'grok-imagine-image-quality'
+  size: '1024x1024' | '1024x1536' | '1536x1024'
+  signal?: AbortSignal
+}): Promise<ImageGenerationResult> {
+  const editPrompt = await translateImagePrompt(input.prompt, input.signal)
+
+  // Prefer the native xAI edit endpoint whenever the active provider supports
+  // it. The source is sent as an official image_url object (data URLs work).
+  try {
+    const response = await fetch(`${API_ROOT}/images/edits`, {
+      method: 'POST',
+      headers: authHeaders(input.apiKey),
+      signal: input.signal,
+      body: JSON.stringify({
+        model: input.model,
+        prompt: editPrompt,
+        image: { type: 'image_url', url: input.sourceImage },
+      }),
+    })
+    if (response.ok) {
+      const result = imageResultFromPayload(await response.json())
+      if (result) return result
+    }
+  } catch (error) {
+    if (input.signal?.aborted) throw error
+  }
+
+  // Some free image providers do not implement /images/edits. In that case,
+  // use Grok vision to turn the source + requested change into a faithful
+  // generation prompt, then create a new version instead of showing a dead UI.
+  const visionResponse = await fetch(`${API_ROOT}/chat/completions`, {
+    method: 'POST',
+    headers: authHeaders(input.apiKey),
+    signal: input.signal,
+    body: JSON.stringify({
+      model: 'grok-4.6',
+      reasoning_effort: 'low',
+      stream: false,
+      messages: [{
+        role: 'user',
+        content: [
+          {
+            type: 'text',
+            text: `Create one precise English image-generation prompt that recreates this source image while applying this edit: ${editPrompt}. Preserve the original subject, composition, identity, colors and camera angle unless the edit explicitly changes them. Return only the final prompt.`,
+          },
+          { type: 'image_url', image_url: { url: input.sourceImage, detail: 'high' } },
+        ],
+      }],
+    }),
+  })
+  if (!visionResponse.ok) throw await errorFromResponse(visionResponse)
+  const visionPayload = await visionResponse.json()
+  const regeneratedPrompt = visionPayload?.choices?.[0]?.message?.content
+  if (typeof regeneratedPrompt !== 'string' || !regeneratedPrompt.trim()) {
+    throw new GrokAPIError('Không thể đọc ảnh nguồn để chỉnh sửa.')
+  }
+  return generateImage({
+    apiKey: input.apiKey,
+    prompt: regeneratedPrompt.trim(),
+    model: input.model,
+    size: input.size,
+    signal: input.signal,
+  })
 }

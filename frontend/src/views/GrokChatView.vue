@@ -3,7 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import DOMPurify from 'dompurify'
 import { marked } from 'marked'
 import GrokLogo from '@/components/grok/GrokLogo.vue'
-import { generateImage, getUsage, streamChat } from '@/features/grok-chat/api'
+import { editImage, generateImage, getUsage, streamChat } from '@/features/grok-chat/api'
 import { prepareImage } from '@/features/grok-chat/image'
 import {
   clearAPIKey,
@@ -59,6 +59,13 @@ const imaginePrompt = ref('')
 const imagineModel = ref<ImageModel>('grok-imagine-image-quality')
 const imagineSize = ref<ImageSize>('1024x1024')
 const imagineError = ref('')
+const selectedImage = ref('')
+const imageEditPrompt = ref('')
+const imageEditError = ref('')
+const imageEditorBusy = ref(false)
+const imageEditorPrompt = ref<HTMLTextAreaElement | null>(null)
+const imageEditorController = ref<AbortController | null>(null)
+let imageEditorPreviousFocus: HTMLElement | null = null
 const reasoningModes: ReasoningMode[] = ['low', 'medium', 'high']
 
 const reasoningLabel = computed(() => ({ low: 'Nhanh', medium: 'Tiêu chuẩn', high: 'Suy nghĩ kỹ' })[reasoning.value])
@@ -311,6 +318,74 @@ function addToGallery(url: string) {
   saveGallery(gallery.value)
 }
 
+async function openImageEditor(image: string) {
+  imageEditorPreviousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
+  selectedImage.value = image
+  imageEditPrompt.value = ''
+  imageEditError.value = ''
+  await nextTick()
+  imageEditorPrompt.value?.focus()
+}
+
+function closeImageEditor() {
+  if (imageEditorBusy.value) return
+  selectedImage.value = ''
+  imageEditPrompt.value = ''
+  imageEditError.value = ''
+  nextTick(() => imageEditorPreviousFocus?.focus())
+}
+
+function handleImageEditorKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape' && selectedImage.value) closeImageEditor()
+}
+
+async function submitImageEdit() {
+  const instruction = imageEditPrompt.value.trim()
+  if (!selectedImage.value || !instruction || imageEditorBusy.value) return
+  imageEditorBusy.value = true
+  imageEditError.value = ''
+  imageEditorController.value = new AbortController()
+  try {
+    const result = await editImage({
+      apiKey: apiKey.value,
+      sourceImage: selectedImage.value,
+      prompt: instruction,
+      model: imagineModel.value,
+      size: imagineSize.value,
+      signal: imageEditorController.value.signal,
+    })
+    addToGallery(result.url)
+    selectedImage.value = result.url
+    imageEditPrompt.value = ''
+
+    const conversation = ensureConversation()
+    conversation.messages.push({
+      id: createId('message'),
+      role: 'user',
+      text: `Chỉnh sửa ảnh: ${instruction}`,
+      createdAt: Date.now(),
+    }, {
+      id: createId('message'),
+      role: 'assistant',
+      text: result.revisedPrompt || 'Đã tạo phiên bản ảnh mới.',
+      generatedImages: [result.url],
+      createdAt: Date.now(),
+    })
+    conversation.updatedAt = Date.now()
+    persistConversations()
+    refreshUsage().catch(() => undefined)
+    await nextTick()
+    imageEditorPrompt.value?.focus()
+  } catch (error) {
+    imageEditError.value = error instanceof DOMException && error.name === 'AbortError'
+      ? 'Đã dừng chỉnh sửa ảnh.'
+      : error instanceof Error ? error.message : 'Không thể chỉnh sửa ảnh.'
+  } finally {
+    imageEditorBusy.value = false
+    imageEditorController.value = null
+  }
+}
+
 function selectConversation(id: string) {
   activeConversationId.value = id
   activeTab.value = 'chat'
@@ -360,6 +435,7 @@ watch(conversations, persistConversations, { deep: true })
 watch(activeConversationId, scrollToBottom)
 
 onMounted(async () => {
+  window.addEventListener('keydown', handleImageEditorKeydown)
   const manifest = document.querySelector<HTMLLinkElement>('link[rel="manifest"]') || document.createElement('link')
   manifest.rel = 'manifest'
   manifest.href = '/grok-chat-manifest.webmanifest'
@@ -384,7 +460,11 @@ onMounted(async () => {
   }
 })
 
-onBeforeUnmount(() => controller.value?.abort())
+onBeforeUnmount(() => {
+  controller.value?.abort()
+  imageEditorController.value?.abort()
+  window.removeEventListener('keydown', handleImageEditorKeydown)
+})
 </script>
 
 <template>
@@ -573,8 +653,10 @@ onBeforeUnmount(() => controller.value?.abort())
               <p v-else class="user-text">{{ message.text }}</p>
               <div v-if="message.generatedImages?.length" class="generated-images">
                 <figure v-for="(image, index) in message.generatedImages" :key="image">
-                  <img :src="image" alt="Ảnh do Grok Imagine tạo" />
-                  <button @click="downloadImage(image, index)">Tải ảnh</button>
+                  <button class="image-open" aria-label="Mở ảnh để xem và chỉnh sửa" @click="openImageEditor(image)">
+                    <img :src="image" alt="Ảnh do Grok Imagine tạo" />
+                  </button>
+                  <button class="image-download" @click="downloadImage(image, index)">Tải ảnh</button>
                 </figure>
               </div>
             </div>
@@ -732,8 +814,10 @@ onBeforeUnmount(() => controller.value?.abort())
           <div class="section-heading"><h2>Thư viện của bạn</h2><span>{{ gallery.length }} ảnh</span></div>
           <div class="gallery-grid">
             <figure v-for="(image, index) in gallery" :key="`${image.slice(0, 40)}-${index}`">
-              <img :src="image" alt="Ảnh trong thư viện Grok Imagine" loading="lazy" />
-              <button @click="downloadImage(image, index)">↓</button>
+              <button class="image-open" aria-label="Mở ảnh để xem và chỉnh sửa" @click="openImageEditor(image)">
+                <img :src="image" alt="Ảnh trong thư viện Grok Imagine" loading="lazy" />
+              </button>
+              <button class="image-download" aria-label="Tải ảnh" @click="downloadImage(image, index)">↓</button>
             </figure>
           </div>
         </section>
@@ -796,6 +880,39 @@ onBeforeUnmount(() => controller.value?.abort())
         </button>
       </nav>
       <input ref="fileInput" class="hidden-input" type="file" accept="image/*" multiple @change="handleFiles" />
+
+      <div v-if="selectedImage" class="image-editor-backdrop" @click.self="closeImageEditor">
+        <section class="image-editor" role="dialog" aria-modal="true" aria-labelledby="image-editor-title">
+          <header class="image-editor-header">
+            <div><p>GROK IMAGINE</p><h2 id="image-editor-title">Chỉnh sửa hình ảnh</h2></div>
+            <button class="image-editor-close" aria-label="Đóng trình chỉnh sửa ảnh" :disabled="imageEditorBusy" @click="closeImageEditor">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
+            </button>
+          </header>
+          <div class="image-editor-content">
+            <div class="image-editor-preview">
+              <img :src="selectedImage" alt="Ảnh đang chỉnh sửa" />
+              <span v-if="imageEditorBusy" class="image-editor-processing"><i class="spinner"></i>Đang tạo phiên bản mới…</span>
+            </div>
+            <div class="image-editor-controls">
+              <div class="image-editor-copy"><strong>Muốn thay đổi điều gì?</strong><span>Ảnh gốc được dùng làm tham chiếu. Bạn có thể tiếp tục sửa phiên bản mới.</span></div>
+              <label class="image-editor-prompt">
+                <span>Yêu cầu chỉnh sửa</span>
+                <textarea ref="imageEditorPrompt" v-model="imageEditPrompt" rows="4" placeholder="Ví dụ: Đổi ngôi nhà thành màu xanh, giữ nguyên góc chụp và khung cảnh…" :disabled="imageEditorBusy" @keydown.ctrl.enter.prevent="submitImageEdit" @keydown.meta.enter.prevent="submitImageEdit"></textarea>
+              </label>
+              <div class="image-editor-options">
+                <label><span>Chất lượng</span><select v-model="imagineModel" :disabled="imageEditorBusy"><option value="grok-imagine-image">Nhanh</option><option value="grok-imagine-image-quality">Chi tiết</option></select></label>
+                <label><span>Tỷ lệ ảnh mới</span><select v-model="imagineSize" :disabled="imageEditorBusy"><option value="1024x1024">Vuông 1:1</option><option value="1024x1536">Dọc 2:3</option><option value="1536x1024">Ngang 3:2</option></select></label>
+              </div>
+              <p v-if="imageEditError" class="image-editor-error" role="alert">{{ imageEditError }}</p>
+              <div class="image-editor-actions">
+                <button class="image-editor-download" :disabled="imageEditorBusy" @click="downloadImage(selectedImage)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 5-5m-5 5-5-5M5 21h14" /></svg>Tải ảnh</button>
+                <button class="image-editor-submit" :disabled="imageEditorBusy || !imageEditPrompt.trim()" @click="submitImageEdit"><span v-if="imageEditorBusy" class="spinner"></span>{{ imageEditorBusy ? 'Đang chỉnh sửa…' : 'Tạo phiên bản mới' }}</button>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
     </div>
   </div>
 </template>
@@ -1605,5 +1722,68 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 
 @media (prefers-reduced-motion: reduce) {
   .speed-options button,.mobile-drawer { transition: none; }
+}
+
+/* Image viewer/editor: one interaction works from gallery and chat results. */
+.image-open {
+  display: block;
+  position: static !important;
+  width: 100%;
+  height: 100%;
+  padding: 0 !important;
+  overflow: hidden;
+  color: inherit;
+  border: 0 !important;
+  border-radius: inherit !important;
+  background: transparent !important;
+  cursor: zoom-in;
+}
+.image-open img { transition: transform .2s ease, filter .2s ease; }
+.image-open:hover img { transform: scale(1.018); filter: brightness(1.06); }
+.image-download { z-index: 2; }
+.image-editor-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(0,0,0,.72);
+  backdrop-filter: blur(14px);
+}
+.image-editor {
+  width: min(100%, 980px);
+  max-height: min(92dvh, 860px);
+  overflow: auto;
+  color: var(--theme-text, #f4f4f4);
+  border: 1px solid var(--theme-border-strong, rgba(255,255,255,.14));
+  border-radius: 26px;
+  background: var(--theme-surface-raised, #171717);
+  box-shadow: 0 30px 100px rgba(0,0,0,.55);
+}
+.image-editor-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 22px 24px 16px; border-bottom: 1px solid var(--theme-border, rgba(255,255,255,.09)); }
+.image-editor-header p { margin: 0 0 5px; color: var(--theme-text-tertiary, #999); font-size: 10px; font-weight: 800; letter-spacing: .15em; }
+.image-editor-header h2 { margin: 0; font-size: clamp(20px, 3vw, 28px); letter-spacing: -.035em; }
+.image-editor-close { display: grid; place-items: center; width: 44px; height: 44px; flex: 0 0 44px; color: var(--theme-text-secondary, #bbb); border: 0; border-radius: 13px; background: var(--theme-surface-active, #242424); }
+.image-editor-close:hover:not(:disabled) { color: var(--theme-text, #fff); background: var(--theme-surface-hover, #303030); }
+.image-editor-close svg { width: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+.image-editor-content { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(300px, .85fr); gap: 24px; padding: 24px; }
+.image-editor-preview { position: relative; display: grid; place-items: center; min-height: 280px; overflow: hidden; border-radius: 18px; background: #090909; }
+.image-editor-preview img { display: block; width: 100%; max-height: 64dvh; object-fit: contain; }
+.image-editor-processing { position: absolute; right: 12px; bottom: 12px; display: flex; align-items: center; padding: 9px 12px; color: #fff; border-radius: 10px; background: rgba(0,0,0,.7); font-size: 12px; }
+.image-editor-controls { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.image-editor-copy { display: grid; gap: 5px; }.image-editor-copy strong { font-size: 16px; }.image-editor-copy span { color: var(--theme-text-secondary, #b4b4b4); font-size: 12px; line-height: 1.45; }
+.image-editor-prompt { display: grid; gap: 7px; }.image-editor-prompt > span,.image-editor-options label > span { color: var(--theme-text-secondary, #b4b4b4); font-size: 11px; font-weight: 650; }
+.image-editor-prompt textarea { width: 100%; min-height: 112px; resize: vertical; padding: 12px; color: var(--theme-text, #fff); border: 1px solid var(--theme-border-strong, rgba(255,255,255,.14)); border-radius: 13px; outline: 0; background: var(--theme-surface-active, #242424); line-height: 1.5; }
+.image-editor-prompt textarea::placeholder { color: var(--theme-text-tertiary, #888); }.image-editor-prompt textarea:focus { border-color: var(--theme-text-secondary, #aaa); box-shadow: var(--focus); }
+.image-editor-options { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }.image-editor-options label { display: grid; gap: 7px; }.image-editor-options select { width: 100%; min-height: 42px; padding: 0 10px; color: var(--theme-text, #fff); border: 1px solid var(--theme-border-strong, rgba(255,255,255,.14)); border-radius: 11px; background: var(--theme-surface-active, #242424); }
+.image-editor-error { margin: 0; padding: 10px 12px; color: #ffb4b4; border: 1px solid rgba(255,100,100,.25); border-radius: 11px; background: rgba(130,30,30,.16); font-size: 12px; }
+.image-editor-actions { display: grid; grid-template-columns: auto 1fr; gap: 9px; margin-top: auto; }.image-editor-actions button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 46px; padding: 0 15px; border-radius: 12px; font-size: 13px; font-weight: 700; }.image-editor-actions svg { width: 17px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }.image-editor-download { color: var(--theme-text, #fff); border: 1px solid var(--theme-border-strong, rgba(255,255,255,.16)); background: var(--theme-surface-active, #242424); }.image-editor-submit { color: #fff; border: 0; background: linear-gradient(135deg,#8b5cf6,#6366f1); }.image-editor-actions button:disabled { opacity: .55; cursor: not-allowed; }
+@media (max-width: 700px) {
+  .image-editor-backdrop { align-items: end; padding: 0; }
+  .image-editor { width: 100%; max-height: 96dvh; border-radius: 24px 24px 0 0; }
+  .image-editor-header { padding: 18px 16px 14px; }.image-editor-content { display: flex; flex-direction: column; gap: 16px; padding: 16px; }
+  .image-editor-preview { min-height: 210px; max-height: 45dvh; }.image-editor-preview img { max-height: 45dvh; }.image-editor-controls { gap: 13px; }
+  .image-editor-actions { position: sticky; bottom: 0; padding-top: 3px; background: var(--theme-surface-raised, #171717); }.image-editor-actions button { min-height: 48px; }
 }
 </style>

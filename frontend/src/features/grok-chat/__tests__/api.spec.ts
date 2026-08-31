@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { extractSSEText, generateImage, getUsage, GrokAPIError, streamChat } from '../api'
+import { editImage, extractSSEText, generateImage, getUsage, GrokAPIError, streamChat } from '../api'
 
 describe('grok chat api', () => {
   beforeEach(() => vi.restoreAllMocks())
@@ -101,5 +101,29 @@ describe('grok chat api', () => {
       status: 401,
       message: 'API key không hợp lệ hoặc đã bị thu hồi.',
     }))
+  })
+
+  it('edits an image through the native edits endpoint', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(JSON.stringify({ responseData: { translatedText: 'Make the house blue' } }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ data: [{ url: 'https://images.example/edited.png' }] }), { status: 200 }))
+    const result = await editImage({ apiKey: 'sk-customer', sourceImage: 'data:image/png;base64,source', prompt: 'Đổi nhà thành màu xanh', model: 'grok-imagine-image-quality', size: '1024x1024' })
+    expect(result.url).toBe('https://images.example/edited.png')
+    const request = JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))
+    expect(request.image).toEqual({ type: 'image_url', url: 'data:image/png;base64,source' })
+    expect(request.prompt).toBe('Make the house blue')
+  })
+
+  it('falls back to vision and generation when native edits are unavailable', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(JSON.stringify({ responseData: { translatedText: 'Remove the clouds' } }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: { message: 'not supported' } }), { status: 422 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ message: { content: 'A faithful landscape with no clouds' } }] }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ responseData: { translatedText: 'A faithful landscape with no clouds' } }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ data: [{ url: 'https://images.example/regenerated.png' }] }), { status: 200 }))
+    const result = await editImage({ apiKey: 'sk-customer', sourceImage: 'data:image/png;base64,source', prompt: 'Xóa mây', model: 'grok-imagine-image', size: '1536x1024' })
+    expect(result.url).toBe('https://images.example/regenerated.png')
+    expect(JSON.parse(String(fetchMock.mock.calls[2]?.[1]?.body)).messages[0].content[1].image_url.url).toBe('data:image/png;base64,source')
+    expect(JSON.parse(String(fetchMock.mock.calls[4]?.[1]?.body))).toEqual({ model: 'grok-imagine-image', prompt: 'A faithful landscape with no clouds' })
   })
 })

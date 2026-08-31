@@ -1,12 +1,14 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { generateImage, streamChat } = vi.hoisted(() => ({
+const { editImage, generateImage, streamChat } = vi.hoisted(() => ({
+  editImage: vi.fn(),
   generateImage: vi.fn(),
   streamChat: vi.fn(),
 }))
 
 vi.mock('@/features/grok-chat/api', () => ({
+  editImage,
   generateImage,
   getUsage: vi.fn(),
   streamChat,
@@ -21,6 +23,8 @@ describe('GrokChatView image composer', () => {
     window.history.replaceState({}, '', '/chat?preview')
     generateImage.mockReset()
     generateImage.mockResolvedValue({ url: 'data:image/png;base64,dGVzdA==' })
+    editImage.mockReset()
+    editImage.mockResolvedValue({ url: 'data:image/png;base64,ZWQ=', revisedPrompt: 'Edited image' })
     streamChat.mockReset()
     streamChat.mockImplementation(async ({ onText }: { onText: (chunk: string) => void }) => onText('Xin chào'))
   })
@@ -117,5 +121,21 @@ describe('GrokChatView image composer', () => {
 
     expect(wrapper.get('.settings-page').text()).not.toContain('Chế độ trả lời')
     expect(wrapper.find('.reasoning-option').exists()).toBe(false)
+  })
+
+  it('opens a generated image and creates an edited version', async () => {
+    const wrapper = mount(GrokChatView)
+    await flushPromises()
+    await wrapper.get('button[aria-label="Đổi chế độ tạo ảnh"]').trigger('click')
+    await wrapper.get('textarea[placeholder="Mô tả hình ảnh bạn muốn tạo…"]').setValue('Một căn nhà')
+    await wrapper.get('button[aria-label="Gửi"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('button[aria-label="Mở ảnh để xem và chỉnh sửa"]').trigger('click')
+    expect(wrapper.get('[role="dialog"]').text()).toContain('Chỉnh sửa hình ảnh')
+    await wrapper.get('textarea[placeholder*="Đổi ngôi nhà"]').setValue('Đổi ngôi nhà thành màu xanh')
+    await wrapper.get('.image-editor-submit').trigger('click')
+    await flushPromises()
+    expect(editImage).toHaveBeenCalledWith(expect.objectContaining({ sourceImage: 'data:image/png;base64,dGVzdA==', prompt: 'Đổi ngôi nhà thành màu xanh' }))
+    expect(wrapper.get('[role="dialog"] img').attributes('src')).toBe('data:image/png;base64,ZWQ=')
   })
 })
