@@ -51,7 +51,7 @@ describe('grok chat api', () => {
   it('normalizes base64 image generation responses into a data URL', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(new Response(JSON.stringify({
-        choices: [{ message: { content: 'An astronaut cat' } }],
+        responseData: { translatedText: 'An astronaut cat' },
       }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
       .mockResolvedValueOnce(new Response(JSON.stringify({
         data: [{ b64_json: 'aW1hZ2U=' }],
@@ -73,7 +73,7 @@ describe('grok chat api', () => {
   it('falls back to the fast model and accepts alternate image payloads', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(new Response(JSON.stringify({
-        choices: [{ message: { content: 'A Vietnamese landscape' } }],
+        responseData: { translatedText: 'A Vietnamese landscape' },
       }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ error: { message: 'model unavailable' } }), {
         status: 422,
