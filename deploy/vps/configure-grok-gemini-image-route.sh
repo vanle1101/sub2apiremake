@@ -55,6 +55,7 @@ updated AS (
       ),
       status = 'active',
       schedulable = TRUE,
+      priority = 2,
       error_message = NULL,
       updated_at = NOW()
   WHERE id IN (SELECT id FROM existing)
@@ -84,6 +85,73 @@ inserted AS (
         'grok-imagine-image', :'gemini_model',
         'grok-imagine-image-quality', :'gemini_model',
         :'gemini_model', :'gemini_model'
+      )
+    ),
+    '{}'::jsonb,
+    3,
+    1,
+    'active',
+    TRUE
+  WHERE NOT EXISTS (SELECT 1 FROM updated)
+  RETURNING id
+),
+image_account AS (
+  SELECT id FROM updated
+  UNION ALL
+  SELECT id FROM inserted
+)
+INSERT INTO account_groups (account_id, group_id)
+SELECT id, :group_id
+FROM image_account
+ON CONFLICT (account_id, group_id) DO NOTHING;
+
+WITH existing AS (
+  SELECT id
+  FROM accounts
+  WHERE name = 'Pollinations Free Image Gateway'
+    AND platform = 'openai'
+    AND deleted_at IS NULL
+  ORDER BY id
+  LIMIT 1
+),
+updated AS (
+  UPDATE accounts
+  SET type = 'apikey',
+      credentials = jsonb_build_object(
+        'api_key', 'anonymous',
+        'base_url', 'https://image.pollinations.ai',
+        'model_mapping', jsonb_build_object(
+          'grok-imagine', 'pollinations-flux',
+          'grok-imagine-image', 'pollinations-flux',
+          'grok-imagine-image-quality', 'pollinations-flux',
+          :'gemini_model', 'pollinations-flux'
+        )
+      ),
+      status = 'active',
+      schedulable = TRUE,
+      concurrency = 3,
+      priority = 1,
+      error_message = NULL,
+      updated_at = NOW()
+  WHERE id IN (SELECT id FROM existing)
+  RETURNING id
+),
+inserted AS (
+  INSERT INTO accounts (
+    name, platform, type, credentials, extra, concurrency, priority, status, schedulable
+  )
+  SELECT
+    'Pollinations Free Image Gateway',
+    'openai',
+    'apikey',
+    jsonb_build_object(
+      'api_key', 'anonymous',
+      'base_url', 'https://image.pollinations.ai',
+      'model_mapping', jsonb_build_object(
+        'grok-imagine', 'pollinations-flux',
+        'grok-imagine-image', 'pollinations-flux',
+        'grok-imagine-image-quality', 'pollinations-flux',
+        :'gemini_model', 'pollinations-flux'
       )
     ),
     '{}'::jsonb,
@@ -136,22 +204,20 @@ DO UPDATE SET
   notes = EXCLUDED.notes,
   updated_at = NOW();
 
-WITH image_account AS (
+WITH image_accounts AS (
   SELECT id
   FROM accounts
-  WHERE name = 'Gemini Image Gateway'
+  WHERE name IN ('Gemini Image Gateway', 'Pollinations Free Image Gateway')
     AND platform = 'openai'
     AND deleted_at IS NULL
-  ORDER BY id
-  LIMIT 1
 )
 INSERT INTO scheduler_outbox (event_type, account_id, group_id, payload)
 SELECT event_type, account_id, group_id, '{}'::jsonb
-FROM image_account
+FROM image_accounts
 CROSS JOIN LATERAL (
   VALUES
-    ('account_changed'::text, image_account.id, NULL::bigint),
-    ('account_groups_changed'::text, image_account.id, :group_id::bigint)
+    ('account_changed'::text, image_accounts.id, NULL::bigint),
+    ('account_groups_changed'::text, image_accounts.id, :group_id::bigint)
 ) AS events(event_type, account_id, group_id);
 
 INSERT INTO scheduler_outbox (event_type, account_id, group_id, payload)
@@ -162,4 +228,4 @@ VALUES
 COMMIT;
 SQL
 
-echo "Configured group ${GROK_GROUP_ID}: Grok text + Gemini image (${GEMINI_IMAGE_MODEL})"
+echo "Configured group ${GROK_GROUP_ID}: Grok text + Pollinations image + Gemini fallback (${GEMINI_IMAGE_MODEL})"

@@ -720,6 +720,48 @@ func TestBuildOpenAIImagesURL_HandlesVersionedBaseURL(t *testing.T) {
 	)
 }
 
+func TestBuildPollinationsLegacyImageRequest(t *testing.T) {
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{"base_url": "https://image.pollinations.ai"}}
+	parsed := &OpenAIImagesRequest{Endpoint: openAIImagesGenerationsEndpoint, Prompt: "a red apple", Size: "512x768"}
+
+	req, err := buildPollinationsLegacyImageRequest(context.Background(), account, parsed, "pollinations-flux")
+
+	require.NoError(t, err)
+	require.Equal(t, http.MethodGet, req.Method)
+	require.Equal(t, pollinationsLegacyImageHost, req.URL.Host)
+	require.Equal(t, "/prompt/a red apple", req.URL.Path)
+	require.Equal(t, "/prompt/a%20red%20apple", req.URL.EscapedPath())
+	require.Equal(t, "flux", req.URL.Query().Get("model"))
+	require.Equal(t, "512", req.URL.Query().Get("width"))
+	require.Equal(t, "768", req.URL.Query().Get("height"))
+	require.Equal(t, "true", req.URL.Query().Get("safe"))
+}
+
+func TestHandlePollinationsLegacyImageResponseWrapsOpenAIJSON(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"image/jpeg"}},
+		Body:       io.NopCloser(bytes.NewReader([]byte("jpeg-bytes"))),
+	}
+	svc := &OpenAIGatewayService{}
+
+	count, sizes, err := svc.handlePollinationsLegacyImageResponse(resp, c, &OpenAIImagesRequest{Size: "512x512"})
+
+	require.NoError(t, err)
+	require.Equal(t, 1, count)
+	require.Equal(t, []string{"512x512"}, sizes)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "anBlZy1ieXRlcw==", gjson.Get(rec.Body.String(), "data.0.b64_json").String())
+}
+
+func TestValidateOpenAIImagesModelAllowsPollinationsImageModel(t *testing.T) {
+	require.NoError(t, validateOpenAIImagesModel("pollinations-flux"))
+	require.Error(t, validateOpenAIImagesModel("pollinations"))
+}
+
 type openAIImageTestSSEEvent struct {
 	Name string
 	Data string

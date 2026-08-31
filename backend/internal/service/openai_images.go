@@ -14,6 +14,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -31,8 +32,9 @@ const (
 	openAIImagesGenerationsEndpoint = "/v1/images/generations"
 	openAIImagesEditsEndpoint       = "/v1/images/edits"
 
-	openAIImagesGenerationsURL = "https://api.openai.com/v1/images/generations"
-	openAIImagesEditsURL       = "https://api.openai.com/v1/images/edits"
+	openAIImagesGenerationsURL  = "https://api.openai.com/v1/images/generations"
+	openAIImagesEditsURL        = "https://api.openai.com/v1/images/edits"
+	pollinationsLegacyImageHost = "image.pollinations.ai"
 
 	openAIChatGPTStartURL          = "https://chatgpt.com/"
 	openAIChatGPTFilesURL          = "https://chatgpt.com/backend-api/files"
@@ -457,7 +459,13 @@ func applyOpenAIImagesDefaults(req *OpenAIImagesRequest) {
 func isOpenAIImageGenerationModel(model string) bool {
 	return IsGPTImageGenerationModel(model) ||
 		isGrokImageGenerationModel(model) ||
-		isGeminiImageGenerationModel(model)
+		isGeminiImageGenerationModel(model) ||
+		isPollinationsImageGenerationModel(model)
+}
+
+func isPollinationsImageGenerationModel(model string) bool {
+	model = strings.ToLower(strings.TrimSpace(model))
+	return strings.HasPrefix(model, "pollinations-")
 }
 
 // IsGPTImageGenerationModel identifies the GPT native image-generation model family.
@@ -624,7 +632,12 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 	if err != nil {
 		return nil, err
 	}
-	upstreamReq, err := s.buildOpenAIImagesRequest(upstreamCtx, c, account, forwardBody, forwardContentType, token, parsed.Endpoint)
+	var upstreamReq *http.Request
+	if isPollinationsLegacyImageAccount(account) {
+		upstreamReq, err = buildPollinationsLegacyImageRequest(upstreamCtx, account, parsed, upstreamModel)
+	} else {
+		upstreamReq, err = s.buildOpenAIImagesRequest(upstreamCtx, c, account, forwardBody, forwardContentType, token, parsed.Endpoint)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -722,6 +735,17 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 			ImageOutputSizes: imageOutputSizes,
 		}, nil
 	} else {
+		if isPollinationsLegacyImageAccount(account) {
+			nonStreamCount, nonStreamSizes, err := s.handlePollinationsLegacyImageResponse(resp, c, parsed)
+			if err != nil {
+				return nil, err
+			}
+			return &OpenAIForwardResult{
+				RequestID: resp.Header.Get("x-request-id"), Model: requestModel, UpstreamModel: upstreamModel,
+				Duration: time.Since(startTime), ImageCount: nonStreamCount, ImageSize: parsed.SizeTier,
+				ImageInputSize: parsed.Size, ImageOutputSizes: nonStreamSizes,
+			}, nil
+		}
 		nonStreamUsage, nonStreamCount, nonStreamSizes, err := s.handleOpenAIImagesNonStreamingResponse(resp, c)
 		if err != nil {
 			return nil, err
@@ -745,6 +769,77 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 			ImageOutputSizes: nonStreamSizes,
 		}, nil
 	}
+}
+
+func isPollinationsLegacyImageAccount(account *Account) bool {
+	if account == nil {
+		return false
+	}
+	parsed, err := url.Parse(strings.TrimSpace(account.GetOpenAIBaseURL()))
+	return err == nil && strings.EqualFold(parsed.Hostname(), pollinationsLegacyImageHost)
+}
+
+func buildPollinationsLegacyImageRequest(ctx context.Context, account *Account, parsed *OpenAIImagesRequest, upstreamModel string) (*http.Request, error) {
+	if parsed == nil || parsed.IsEdits() {
+		return nil, fmt.Errorf("Pollinations fallback supports image generations only")
+	}
+	prompt := strings.TrimSpace(parsed.Prompt)
+	if prompt == "" {
+		return nil, fmt.Errorf("Pollinations image prompt is required")
+	}
+	base, err := url.Parse(strings.TrimRight(account.GetOpenAIBaseURL(), "/"))
+	if err != nil || !strings.EqualFold(base.Hostname(), pollinationsLegacyImageHost) {
+		return nil, fmt.Errorf("invalid Pollinations image base URL")
+	}
+	base.Path = "/prompt/" + prompt
+	query := base.Query()
+	model := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(upstreamModel)), "pollinations-")
+	if model == "" {
+		model = "flux"
+	}
+	query.Set("model", model)
+	query.Set("nologo", "true")
+	query.Set("safe", "true")
+	if parts := strings.SplitN(parsed.Size, "x", 2); len(parts) == 2 {
+		if width, err := strconv.Atoi(parts[0]); err == nil && width >= 256 && width <= 2048 {
+			query.Set("width", strconv.Itoa(width))
+		}
+		if height, err := strconv.Atoi(parts[1]); err == nil && height >= 256 && height <= 2048 {
+			query.Set("height", strconv.Itoa(height))
+		}
+	}
+	base.RawQuery = query.Encode()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(WithHTTPUpstreamProfile(req.Context(), HTTPUpstreamProfileOpenAI))
+	req.Header.Set("Accept", "image/*")
+	req.Header.Set("User-Agent", openAIImageBackendUserAgent)
+	return req, nil
+}
+
+func (s *OpenAIGatewayService) handlePollinationsLegacyImageResponse(resp *http.Response, c *gin.Context, parsed *OpenAIImagesRequest) (int, []string, error) {
+	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
+	if err != nil {
+		return 0, nil, err
+	}
+	contentType := strings.ToLower(strings.TrimSpace(resp.Header.Get("Content-Type")))
+	if !strings.HasPrefix(contentType, "image/") {
+		return 0, nil, fmt.Errorf("Pollinations returned a non-image response")
+	}
+	item := map[string]string{"b64_json": base64.StdEncoding.EncodeToString(body)}
+	response := map[string]any{"created": time.Now().Unix(), "data": []map[string]string{item}}
+	encoded, err := json.Marshal(response)
+	if err != nil {
+		return 0, nil, err
+	}
+	c.Data(http.StatusOK, "application/json", encoded)
+	sizes := []string(nil)
+	if parsed != nil && strings.TrimSpace(parsed.Size) != "" {
+		sizes = []string{parsed.Size}
+	}
+	return 1, sizes, nil
 }
 
 func (s *OpenAIGatewayService) buildOpenAIImagesRequest(
