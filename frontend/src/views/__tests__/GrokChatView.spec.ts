@@ -97,4 +97,15 @@ describe('GrokChatView image composer', () => {
     expect(wrapper.get('.app-shell').classes()).not.toContain('sidebar-collapsed')
     expect(wrapper.get('button[aria-label="Thu gọn thanh bên"]').exists()).toBe(true)
   })
+
+  it('changes reasoning with the draggable speed slider', async () => {
+    const wrapper = mount(GrokChatView)
+    await flushPromises()
+
+    await wrapper.get('.speed-trigger').trigger('click')
+    await wrapper.get('input[aria-label="Điều chỉnh tốc độ trả lời"]').setValue('2')
+
+    expect(wrapper.get('.speed-trigger').text()).toContain('Suy nghĩ kỹ')
+    expect(wrapper.get('input[aria-label="Điều chỉnh tốc độ trả lời"]').attributes('value')).toBe('2')
+  })
 })

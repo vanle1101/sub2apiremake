@@ -62,6 +62,13 @@ const imagineError = ref('')
 const reasoningModes: ReasoningMode[] = ['low', 'medium', 'high']
 
 const reasoningLabel = computed(() => ({ low: 'Nhanh', medium: 'Tiêu chuẩn', high: 'Suy nghĩ kỹ' })[reasoning.value])
+const reasoningDescription = computed(() => ({
+  low: 'Ưu tiên tốc độ phản hồi',
+  medium: 'Cân bằng tốc độ và chất lượng',
+  high: 'Phân tích sâu cho câu hỏi khó',
+})[reasoning.value])
+const reasoningIndex = computed(() => reasoningModes.indexOf(reasoning.value))
+const reasoningProgress = computed(() => `${reasoningIndex.value * 50}%`)
 
 function toggleModelMenu() {
   modelMenuOpen.value = !modelMenuOpen.value
@@ -76,6 +83,11 @@ function toggleSpeedMenu() {
 function selectReasoning(mode: ReasoningMode) {
   reasoning.value = mode
   speedMenuOpen.value = false
+}
+
+function updateReasoningFromSlider(event: Event) {
+  const index = Number((event.currentTarget as HTMLInputElement).value)
+  reasoning.value = reasoningModes[index] || 'medium'
 }
 
 marked.setOptions({ breaks: true, gfm: true })
@@ -632,8 +644,23 @@ onBeforeUnmount(() => controller.value?.abort())
                     <span>{{ reasoningLabel }}</span>
                   </button>
                   <div v-if="speedMenuOpen" class="speed-menu" role="menu" aria-label="Chọn tốc độ trả lời">
-                    <div class="speed-menu-title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m13 2-8 12h7l-1 8 8-12h-7z" /></svg><strong>Grok 4.6 · {{ reasoningLabel }}</strong></div>
-                    <div class="speed-track" aria-hidden="true"><span :class="`at-${reasoning}`"></span><i></i><i></i><i></i></div>
+                    <div class="speed-menu-title">
+                      <span><strong>Tốc độ phản hồi</strong><small>{{ reasoningDescription }}</small></span>
+                      <em>Grok 4.6</em>
+                    </div>
+                    <div class="speed-slider-wrap" :style="{ '--speed-progress': reasoningProgress }">
+                      <span aria-hidden="true"><i></i><i></i><i></i></span>
+                      <input
+                        class="speed-slider"
+                        type="range"
+                        min="0"
+                        max="2"
+                        step="1"
+                        :value="reasoningIndex"
+                        aria-label="Điều chỉnh tốc độ trả lời"
+                        @input="updateReasoningFromSlider"
+                      />
+                    </div>
                     <div class="speed-options">
                       <button v-for="mode in reasoningModes" :key="mode" role="menuitemradio" :aria-checked="reasoning === mode" :class="{ active: reasoning === mode }" @click="selectReasoning(mode)">
                         {{ mode === 'low' ? 'Nhanh' : mode === 'medium' ? 'Chuẩn' : 'Thinking' }}
@@ -1506,17 +1533,23 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .model-menu small { max-width: 185px; color: var(--theme-text-tertiary); font-size: 11px; line-height: 1.35; }
 .model-menu svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; }
 .model-menu-divider { height: 1px; margin: 7px 8px; background: var(--theme-border); }
-.speed-menu { width: 270px; padding: 14px 14px 12px; }
-.speed-menu-title { display: flex; align-items: center; gap: 9px; min-height: 28px; font-size: 13px; }
-.speed-menu-title svg { width: 17px; height: 17px; fill: none; stroke: var(--theme-text-tertiary); stroke-width: 1.8; }
-.speed-track { position: relative; display: flex; align-items: center; justify-content: space-between; height: 14px; margin: 14px 4px 5px; }
-.speed-track::before { content: ''; position: absolute; inset: 5px 0 auto; height: 4px; border-radius: 4px; background: var(--theme-surface-active); }
-.speed-track span { position: absolute; left: 0; top: 5px; z-index: 1; height: 4px; border-radius: 4px; background: #2f91ff; transition: width .18s ease; }
-.speed-track span.at-low { width: 5%; }.speed-track span.at-medium { width: 50%; }.speed-track span.at-high { width: 100%; }
-.speed-track i { position: relative; z-index: 2; width: 10px; height: 10px; border: 2px solid var(--theme-surface-raised); border-radius: 50%; background: var(--theme-text-tertiary); }
-.speed-options { display: grid; grid-template-columns: repeat(3,1fr); gap: 4px; }
-.speed-options button { min-height: 34px; color: var(--theme-text-tertiary); border: 0; border-radius: 10px; background: transparent; font-size: 11px; }
-.speed-options button:hover,.speed-options button.active { color: var(--theme-text); background: var(--theme-surface-hover); }
+.speed-menu { width: 252px; padding: 10px; border-radius: 17px; }
+.speed-menu-title { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 3px 4px 11px; }
+.speed-menu-title > span { display: grid; gap: 3px; min-width: 0; }
+.speed-menu-title strong { color: var(--theme-text); font-size: 12px; font-weight: 680; }
+.speed-menu-title small { color: var(--theme-text-tertiary); font-size: 10px; line-height: 1.35; white-space: nowrap; }
+.speed-menu-title em { flex: 0 0 auto; padding: 4px 7px; color: var(--theme-text-tertiary); border: 1px solid var(--theme-border); border-radius: 9px; font-size: 9px; font-style: normal; font-weight: 650; }
+.speed-slider-wrap { position: relative; height: 24px; margin: 0 6px 5px; }
+.speed-slider-wrap > span { position: absolute; left: 5px; right: 5px; top: 10px; display: flex; justify-content: space-between; pointer-events: none; }
+.speed-slider-wrap > span::before { content: ''; position: absolute; left: 0; right: 0; top: 3px; height: 2px; border-radius: 2px; background: linear-gradient(to right,var(--theme-text) 0 var(--speed-progress),var(--theme-border-strong) var(--speed-progress) 100%); }
+.speed-slider-wrap i { position: relative; z-index: 1; width: 8px; height: 8px; border: 2px solid var(--theme-surface-raised); border-radius: 50%; background: var(--theme-text-tertiary); }
+.speed-slider { position: absolute; inset: 0; z-index: 2; width: 100%; height: 24px; margin: 0; opacity: 0; cursor: grab; }
+.speed-slider:active { cursor: grabbing; }
+.speed-slider-wrap:has(.speed-slider:focus-visible) { outline: 2px solid var(--theme-text); outline-offset: 2px; border-radius: 12px; }
+.speed-options { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 3px; padding: 3px; border-radius: 12px; background: var(--theme-surface-active); }
+.speed-options button { min-height: 38px; padding: 0 6px; color: var(--theme-text-tertiary); border: 0; border-radius: 9px; background: transparent; font-size: 10px; font-weight: 620; white-space: nowrap; transition: color .15s ease,background-color .15s ease,box-shadow .15s ease; }
+.speed-options button:hover { color: var(--theme-text); background: var(--theme-surface-hover); }
+.speed-options button.active { color: var(--theme-on-accent); background: var(--theme-accent); box-shadow: 0 1px 3px rgba(0,0,0,.18); }
 
 @media (min-width: 900px) {
   .app-shell { grid-template-columns: 260px minmax(0,1fr); }
@@ -1572,10 +1605,10 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .speed-trigger span { display: none; }
   .model-menu,.speed-menu { right: 0; }
   .model-menu { width: min(260px,calc(100vw - 32px)); }
-  .speed-menu { width: min(270px,calc(100vw - 32px)); }
+  .speed-menu { width: min(252px,calc(100vw - 32px)); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .speed-track span,.mobile-drawer { transition: none; }
+  .speed-options button,.mobile-drawer { transition: none; }
 }
 </style>
